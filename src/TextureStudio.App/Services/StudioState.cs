@@ -16,7 +16,8 @@ public sealed record CanonicalDisplay(
 
 /// <summary>All app state and workflow operations. Panes subscribe to OnChange.</summary>
 public sealed class StudioState(
-    ImageCodec codec, GeminiImageClient gemini, WorkspaceService workspace, HttpClient http)
+    ImageCodec codec, GeminiImageClient gemini, OpenAiImageClient openai,
+    WorkspaceService workspace, HttpClient http)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
@@ -86,6 +87,48 @@ public sealed class StudioState(
             SetStatus($"⚠ Could not persist API key: {FirstLine(ex.Message)}");
         }
     }
+
+    public const string OpenAiKeyFileName = "openai-api-key.txt";
+
+    private string _openAiApiKey = "";
+
+    /// <summary>OpenAI key, persisted like the Gemini key: its own workspace file,
+    /// never in project.json.</summary>
+    public string OpenAiApiKey
+    {
+        get => _openAiApiKey;
+        set
+        {
+            if (_openAiApiKey == value)
+            {
+                return;
+            }
+            _openAiApiKey = value;
+            _ = PersistOpenAiKeyAsync();
+        }
+    }
+
+    private async Task PersistOpenAiKeyAsync()
+    {
+        if (!workspace.IsOpen || workspace.WritesBlocked)
+        {
+            return;
+        }
+        try
+        {
+            await workspace.WriteAsync(OpenAiKeyFileName, System.Text.Encoding.UTF8.GetBytes(_openAiApiKey));
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"⚠ Could not persist OpenAI API key: {FirstLine(ex.Message)}");
+        }
+    }
+
+    /// <summary>True when the configured model runs on the OpenAI provider.</summary>
+    public bool UsesOpenAi => OpenAiImageClient.IsOpenAiModel(Project.Generation.ModelId);
+
+    /// <summary>The configured provider's key (for gating generate/revise).</summary>
+    public string ActiveProviderKey => UsesOpenAi ? OpenAiApiKey : ApiKey;
     public string Status { get; private set; } =
         "Open a workspace folder, then load a VSWAP.BS6 (AoG) or VSWAP.VSI (PS). " +
         "Without a workspace, work is in-memory only.";
@@ -2117,6 +2160,10 @@ public sealed class StudioState(
     public static string[] ThinkingLevelsFor(string modelId)
     {
         var id = modelId.ToLowerInvariant();
+        if (id.StartsWith("gpt-image"))
+        {
+            return ["low", "medium", "high"]; // maps to the OpenAI quality parameter
+        }
         if (id.Contains("gemini-3.1") && id.Contains("flash"))
         {
             return ["minimal", "low", "medium", "high"];
@@ -2142,6 +2189,10 @@ public sealed class StudioState(
     public static string DefaultThinkingFor(string modelId)
     {
         var id = modelId.ToLowerInvariant();
+        if (id.StartsWith("gpt-image"))
+        {
+            return "high";
+        }
         if (id.Contains("gemini-3.1") && id.Contains("flash"))
         {
             return "minimal";
@@ -2411,9 +2462,11 @@ public sealed class StudioState(
     /// in the Jobs rail, and its result awaits review when the API returns.</summary>
     public async Task StartGenerationJobAsync(string prompt)
     {
-        if (string.IsNullOrWhiteSpace(ApiKey))
+        if (string.IsNullOrWhiteSpace(ActiveProviderKey))
         {
-            SetStatus("Set your Gemini API key first (Settings).");
+            SetStatus(UsesOpenAi
+                ? "Set your OpenAI API key first (Settings → Model API)."
+                : "Set your Gemini API key first (Settings → Model API).");
             return;
         }
         if (ActiveGroup is null || ActiveGroup.TileKeys.Count == 0)
@@ -2435,16 +2488,18 @@ public sealed class StudioState(
         var batch = new List<GenerationJob>();
         for (var i = 0; i < versions; i++)
         {
-            // Spread top-p across siblings so the takes genuinely diverge; a single
-            // version keeps the API default.
-            double? topP = versions > 1 ? 0.95 - 0.10 * i : null;
+            // Spread top-p across siblings so the takes genuinely diverge (Gemini only —
+            // the OpenAI images API has no top-p; takes differ by sampling alone).
+            double? topP = versions > 1 && !UsesOpenAi ? 0.95 - 0.10 * i : null;
             var job = new GenerationJob
             {
                 Kind = "generate",
                 Group = ActiveGroup,
                 Manifest = manifest,
                 TopP = topP,
-                VariantLabel = topP is null ? null : $"top-p {topP:0.00}",
+                VariantLabel = versions > 1
+                    ? (topP is null ? $"take {i + 1}" : $"top-p {topP:0.00}")
+                    : null,
                 State = JobState.Queued,
                 Cts = batchCts, // one cancel stops the whole batch
                 Number = nextNumber + i,
@@ -2530,8 +2585,18 @@ public sealed class StudioState(
         {
             try
             {
+                var modelId = Project.Generation.ModelId;
+                if (OpenAiImageClient.IsOpenAiModel(modelId))
+                {
+                    // The Effort level rides the OpenAI quality parameter.
+                    return await openai.GenerateImageAsync(
+                        OpenAiApiKey, modelId, prompt, images,
+                        OpenAiImageClient.SizeFor(modelId, job.Manifest.CanvasWidth),
+                        EffectiveThinkingLevel is { Length: > 0 } quality ? quality : null,
+                        job.Cts.Token);
+                }
                 return await gemini.GenerateImageAsync(
-                    ApiKey, Project.Generation.ModelId, prompt, images,
+                    ApiKey, modelId, prompt, images,
                     ApiSizeFor(job.Manifest.CanvasWidth),
                     job.TopP,
                     EffectiveThinkingLevel,
@@ -2623,9 +2688,11 @@ public sealed class StudioState(
             SetStatus("Mark regions and give each colored set an instruction first.");
             return;
         }
-        if (string.IsNullOrWhiteSpace(ApiKey))
+        if (string.IsNullOrWhiteSpace(ActiveProviderKey))
         {
-            SetStatus("Set your Gemini API key first (Settings).");
+            SetStatus(UsesOpenAi
+                ? "Set your OpenAI API key first (Settings → Model API)."
+                : "Set your Gemini API key first (Settings → Model API).");
             return;
         }
         var originalPng = job.RawPng;
@@ -2816,6 +2883,11 @@ public sealed class StudioState(
         if (keyBytes is { Length: > 0 })
         {
             _apiKey = System.Text.Encoding.UTF8.GetString(keyBytes).Trim();
+        }
+        var openAiKeyBytes = await workspace.ReadAsync(OpenAiKeyFileName);
+        if (openAiKeyBytes is { Length: > 0 })
+        {
+            _openAiApiKey = System.Text.Encoding.UTF8.GetString(openAiKeyBytes).Trim();
         }
         // Legacy single style reference → first entry of the ordered StyleRefs list,
         // carrying the clause that used to be hard-coded so behavior is unchanged.

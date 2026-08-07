@@ -15,6 +15,7 @@ builder.Services.AddScoped(_ => new HttpClient
 });
 builder.Services.AddFluentUIComponents();
 builder.Services.AddScoped<GeminiImageClient>();
+builder.Services.AddScoped<OpenAiImageClient>();
 builder.Services.AddScoped<ImageCodec>();
 builder.Services.AddScoped<WorkspaceService>();
 builder.Services.AddScoped<StudioState>();
