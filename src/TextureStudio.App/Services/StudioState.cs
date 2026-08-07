@@ -271,7 +271,9 @@ public sealed class StudioState(
                 }).ToList()
                 : (j.PendingPlacements ?? []),
         }).ToList();
-        // What's open right now, so a reload lands back here.
+        // What's open right now, so a reload lands back here. User preferences that live
+        // on Ui (like the notification filter) must carry over — this rebuild replaces
+        // the whole object.
         Project.Ui = new UiState
         {
             ActiveGroupName = ActiveGroup?.Name,
@@ -280,6 +282,7 @@ public sealed class StudioState(
             ItemsKind = ItemsKind.ToString(),
             ItemsCategory = CategoryFilter,
             ShowRedraw = ShowRedraw,
+            HiddenNotifications = Project.Ui.HiddenNotifications,
         };
     }
 
