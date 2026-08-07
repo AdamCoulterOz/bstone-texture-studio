@@ -1633,9 +1633,15 @@ public sealed class StudioState(
             var row = ordered[start].CellIndex / manifest.Columns + 1;
             var colA = ordered[start].CellIndex % manifest.Columns + 1;
             var colB = ordered[i].CellIndex % manifest.Columns + 1;
-            sb.Append($"Cells ({row},{colA}) through ({row},{colB}) are butted edge-to-edge " +
-                      "and form ONE continuous scene — art must flow across their shared " +
-                      "edges with no visible seam.\n");
+            sb.Append($"CRITICAL — cells ({row},{colA}) through ({row},{colB}) are ONE " +
+                      "continuous strip, butted edge-to-edge with NO gap between them in " +
+                      "the input. Reproduce them exactly the same way: one unbroken " +
+                      "panorama covering the strip's full width. Do NOT split the strip " +
+                      "into separate cells, do NOT insert background-colored gutters, " +
+                      "gaps, dividers, borders, or frames between or around them, and do " +
+                      "NOT shrink, re-center, or re-space their content. The artwork must " +
+                      "flow across the shared edges with no visible seam, occupying " +
+                      "exactly the same pixels as the input strip.\n");
         }
         if (itemsOnSheet.Count > 0)
         {
