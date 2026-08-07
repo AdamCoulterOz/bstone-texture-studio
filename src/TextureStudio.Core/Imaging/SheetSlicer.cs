@@ -54,6 +54,17 @@ public static class SheetSlicer
                 bx0 = (int)Math.Round(cx0);
                 bx1 = (int)Math.Round(cx0 + cw);
             }
+            // Trim the antialiased blend between the cell and the sheet's boundary off
+            // detected sprite boxes — those mixed pixels survive keying as a dark
+            // hairline on the tile edges. Sprite art is inset, so nothing real is lost.
+            if (!usedFallback && TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite)
+            {
+                var erode = Math.Clamp((int)Math.Round((bx1 - bx0) * 0.004), 1, 6);
+                bx0 += erode;
+                bx1 -= erode;
+                by0 += erode;
+                by1 -= erode;
+            }
             var crop = sheet.Crop(Math.Max(0, bx0), Math.Max(0, by0),
                 Math.Min(sheet.Width, bx1) - Math.Max(0, bx0),
                 Math.Min(sheet.Height, by1) - Math.Max(0, by0));
