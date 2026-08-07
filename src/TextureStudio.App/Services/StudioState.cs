@@ -1482,13 +1482,31 @@ public sealed class StudioState(
             {
                 original = DarkGenerator.Apply(original, Project.LightenParams);
             }
-            return (cell.X, cell.Y, cell.W, original.Width, original.Pixels,
-                TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite);
+            var isSprite = TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite;
+            if (isSprite)
+            {
+                // Show the model what we want back: sprite art inset with matte clearly
+                // visible on all four sides (returns kept touching the cell edges and
+                // getting cut off top/bottom). The placement step re-fits art to the
+                // original bounds anyway, so the inset costs nothing on the round-trip.
+                original = InsetIntoMatte(original);
+            }
+            return (cell.X, cell.Y, cell.W, original.Width, original.Pixels, isSprite);
         });
         var png = await codec.ComposeSheetAsync(
             manifest.CanvasWidth, manifest.CanvasHeight, "#202020", tiles);
         group.LastExport = manifest;
         return (png, manifest);
+    }
+
+    /// <summary>Pad sprite art into a slightly larger transparent canvas (~8% margin per
+    /// side) so the composed magenta cell shows matte around all four edges.</summary>
+    private static RgbaImage InsetIntoMatte(RgbaImage art)
+    {
+        var pad = Math.Max(4, art.Width / 10);
+        var canvas = new RgbaImage(art.Width + 2 * pad, art.Height + 2 * pad);
+        canvas.Paste(art, pad, pad);
+        return canvas;
     }
 
     /// <summary>Plan a group's sheet with its seamless runs — the platter renders straight
@@ -2377,7 +2395,9 @@ public sealed class StudioState(
                       "magenta inside the character art itself. For cells with a solid magenta " +
                       "background, make sure the redrawn image is inset from the magenta " +
                       "background so there is visible magenta background around all four edges " +
-                      "of each cell. Also for all objects with a magenta background, re-position " +
+                      "of each cell. The input sheet already shows every magenta-cell item " +
+                      "inset exactly like this — keep the same framing in your output and " +
+                      "never let the art touch any edge of its cell. Also for all objects with a magenta background, re-position " +
                       "them to a directly front facing perspective and from a slightly higher " +
                       "angle, and their front facing surface bottom edge should be parallel " +
                       "with the cell bottom, and only one side of the object is very narrowly " +
