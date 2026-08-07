@@ -855,7 +855,7 @@
     private int _platterAnchor = -1;
 
     private static string Pct(double v, double canvas) =>
-        FormattableString.Invariant($"{100 * v / canvas:0.###}%");
+        FormattableString.Invariant($"{100 * v / canvas:0.#####}%");
 
     /// <summary>Reorders and removals shift indexes, so the selection can't survive them;
     /// runs broken by the mutation dissolve too.</summary>

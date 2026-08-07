@@ -737,3 +737,9 @@ fluent-progress-ring { flex: none; }
 .notif-filter { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .notif-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
     border: 1px solid var(--edge); border-radius: 6px; background: var(--panel2); }
+
+/* Joined run members bleed 1px of art over the shared edge: independently rounded
+   percentage positions can leave a sub-pixel gap between butted cells, and the panel
+   background peeks through as a hairline seam. Runs are wall art in square cells, so
+   the 1px stretch (object-fit: fill) is invisible. */
+.abs-cell.join-r img { width: calc(100% + 1px); height: 100%; object-fit: fill; max-width: none; }
