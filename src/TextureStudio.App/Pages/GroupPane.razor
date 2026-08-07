@@ -182,33 +182,59 @@
         var canvas = (double)manifest.CanvasWidth;
         <div class="platter-row">
         <div class="platter-abs" style="width: min(100%, @(planned.Side * 104)px);">
-            @for (var i = 0; i < manifest.Cells.Count; i++)
+            @foreach (var segment in RenderSegments(manifest))
             {
-                var index = i;
-                var cell = manifest.Cells[index];
-                var key = cell.TileKey;
-                var joinL = cell.Seamless && index > 0 &&
-                    manifest.Cells[index - 1].Y == cell.Y &&
-                    manifest.Cells[index - 1].X + manifest.Cells[index - 1].W == cell.X;
-                var joinR = cell.Seamless && index + 1 < manifest.Cells.Count &&
-                    manifest.Cells[index + 1].Y == cell.Y &&
-                    manifest.Cells[index + 1].X == cell.X + cell.W;
-                <div class="platter-cell abs-cell @(_platterSel.Contains(index) ? "sel" : "") @(joinL ? "join-l" : "") @(joinR ? "join-r" : "") @(_dropTarget == index ? "drop-target" : "")"
-                     style="left: @Pct(cell.X, canvas); top: @Pct(cell.Y, canvas); width: @Pct(cell.W, canvas); height: @Pct(cell.H, canvas);"
-                     @onclick="e => CellClick(group, index, e)"
-                     @ondragenter="() => _dropTarget = index"
-                     @ondragover:preventDefault
-                     @ondrop="() => DropOn(group, index)">
-                    @if (State.GetUrl(key) is { Length: > 0 } url)
-                    {
-                        <img src="@url" alt="@key" draggable="true"
-                             @ondragstart="() => DragPayload.Keys = DragKeysFor(group, index)"
-                             @ondragend="() => _dropTarget = null" />
-                    }
-                    <span class="cell-label">@ShortKey(key)</span>
-                    <button class="cell-remove close-btn" @onclick:stopPropagation
-                            @onclick="() => Remove(group, index)"><IconDismiss Size="11" /></button>
-                </div>
+                var seg = segment;
+                if (seg.Count == 1)
+                {
+                    var index = seg[0];
+                    var cell = manifest.Cells[index];
+                    var key = cell.TileKey;
+                    <div class="platter-cell abs-cell @(_platterSel.Contains(index) ? "sel" : "") @(_dropTarget == index ? "drop-target" : "")"
+                         style="left: @Pct(cell.X, canvas); top: @Pct(cell.Y, canvas); width: @Pct(cell.W, canvas); height: @Pct(cell.H, canvas);"
+                         @onclick="e => CellClick(group, index, e)"
+                         @ondragenter="() => _dropTarget = index"
+                         @ondragover:preventDefault
+                         @ondrop="() => DropOn(group, index)">
+                        @if (State.GetUrl(key) is { Length: > 0 } url)
+                        {
+                            <img src="@url" alt="@key" draggable="true"
+                                 @ondragstart="() => DragPayload.Keys = DragKeysFor(group, index)"
+                                 @ondragend="() => _dropTarget = null" />
+                        }
+                        <span class="cell-label">@ShortKey(key)</span>
+                        <button class="cell-remove close-btn" @onclick:stopPropagation
+                                @onclick="() => Remove(group, index)"><IconDismiss Size="11" /></button>
+                    </div>
+                }
+                else
+                {
+                    var firstCell = manifest.Cells[seg[0]];
+                    var lastCell = manifest.Cells[seg[^1]];
+                    <div class="abs-cell run-strip @(_platterSel.Contains(seg[0]) ? "sel" : "")"
+                         style="left: @Pct(firstCell.X, canvas); top: @Pct(firstCell.Y, canvas); width: @Pct(lastCell.X + lastCell.W - firstCell.X, canvas); height: @Pct(firstCell.H, canvas);">
+                        @foreach (var memberIndex in seg)
+                        {
+                            var index = memberIndex;
+                            var key = manifest.Cells[index].TileKey;
+                            <div class="run-cell @(_dropTarget == index ? "drop-target" : "")"
+                                 @onclick="e => CellClick(group, index, e)"
+                                 @ondragenter="() => _dropTarget = index"
+                                 @ondragover:preventDefault
+                                 @ondrop="() => DropOn(group, index)">
+                                @if (State.GetUrl(key) is { Length: > 0 } url)
+                                {
+                                    <img src="@url" alt="@key" draggable="true"
+                                         @ondragstart="() => DragPayload.Keys = DragKeysFor(group, index)"
+                                         @ondragend="() => _dropTarget = null" />
+                                }
+                                <span class="cell-label">@ShortKey(key)</span>
+                                <button class="cell-remove close-btn" @onclick:stopPropagation
+                                        @onclick="() => Remove(group, index)"><IconDismiss Size="11" /></button>
+                            </div>
+                        }
+                    </div>
+                }
             }
             @for (var g = 0; g < planned.Ghosts.Count; g++)
             {
@@ -1088,6 +1114,32 @@
     }
 
     private int? _dropTarget;
+
+    /// <summary>Consecutive butted cells render as ONE flex strip: flex partitions a
+    /// single box exactly, so joined members can never show sub-pixel seams (no per-cell
+    /// rounding, no art stretching).</summary>
+    private static List<List<int>> RenderSegments(SheetManifest manifest)
+    {
+        var segments = new List<List<int>>();
+        List<int>? current = null;
+        for (var i = 0; i < manifest.Cells.Count; i++)
+        {
+            var joinsPrevious = i > 0 &&
+                manifest.Cells[i].Seamless && manifest.Cells[i - 1].Seamless &&
+                manifest.Cells[i - 1].Y == manifest.Cells[i].Y &&
+                manifest.Cells[i - 1].X + manifest.Cells[i - 1].W == manifest.Cells[i].X;
+            if (joinsPrevious && current is not null)
+            {
+                current.Add(i);
+            }
+            else
+            {
+                current = [i];
+                segments.Add(current);
+            }
+        }
+        return segments;
+    }
 
     /// <summary>Dragging a selected cell carries the whole selection; dragging a run member
     /// carries the whole run — blocks move as one and stay contiguous after the drop.</summary>

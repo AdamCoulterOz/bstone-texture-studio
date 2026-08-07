@@ -217,17 +217,16 @@ label { display: inline-flex; gap: 6px; align-items: center; }
 /* Accent borders only on edges that still exist — join edges stay borderless so a
    selected run reads as one merged item, not per-cell boxes. */
 .abs-cell.sel { border-style: solid; border-color: var(--accent); z-index: 1; }
-.abs-cell.join-r { border-right: none; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.abs-cell.join-l { border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
 .platter-cell img { width: 100%; height: 100%; image-rendering: pixelated; object-fit: contain; }
-.platter-cell .cell-label { position: absolute; left: 3px; top: 2px; font-size: 10px; color: var(--overlay-text); background: var(--overlay); padding: 0 3px; border-radius: 3px; }
-.platter-abs .platter-cell .cell-label { opacity: 0; transition: opacity 0.1s; }
-.platter-abs .platter-cell:hover .cell-label { opacity: 1; }
-.platter-cell .cell-remove { position: absolute; right: 2px; top: 2px; padding: 0 5px; font-size: 11px;
+.platter-cell .cell-label, .run-cell .cell-label { position: absolute; left: 3px; top: 2px; font-size: 10px; color: var(--overlay-text); background: var(--overlay); padding: 0 3px; border-radius: 3px; }
+.platter-abs .platter-cell .cell-label, .platter-abs .run-cell .cell-label { opacity: 0; transition: opacity 0.1s; }
+.platter-abs .platter-cell:hover .cell-label, .platter-abs .run-cell:hover .cell-label { opacity: 1; }
+.platter-cell .cell-remove, .run-cell .cell-remove { position: absolute; right: 2px; top: 2px; padding: 0 5px; font-size: 11px;
     background: color-mix(in srgb, var(--panel) 82%, transparent); color: var(--text);
     opacity: 0; pointer-events: none; transition: opacity 0.1s; }
-.platter-cell:hover .cell-remove { opacity: 1; pointer-events: auto; }
-.platter-cell .cell-remove:hover { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
+.platter-cell:hover .cell-remove, .run-cell:hover .cell-remove { opacity: 1; pointer-events: auto; }
+.platter-cell .cell-remove:hover, .run-cell .cell-remove:hover { background: color-mix(in srgb, var(--panel2) 92%, transparent); }
 /* The select and its sibling buttons share one pinned height so they line up in
    every browser (Edge renders selects shorter than the flex row's tallest item).
    The select is the only header item allowed to shrink — ＋ stays glued to it, and
@@ -738,11 +737,14 @@ fluent-progress-ring { flex: none; }
 .notif-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
     border: 1px solid var(--edge); border-radius: 6px; background: var(--panel2); }
 
-/* Joined run members bleed 1px of art over BOTH sides of every shared edge:
-   independently rounded percentage positions leave sub-pixel gaps, and a one-sided
-   bleed can still lose to the neighbour's antialiased edge on retina displays. Runs
-   are square wall art, so the 1-2px stretch (object-fit: fill) is invisible. */
-.abs-cell.join-r img, .abs-cell.join-l img { height: 100%; object-fit: fill; max-width: none; }
-.abs-cell.join-r img { width: calc(100% + 1px); }
-.abs-cell.join-l img { margin-left: -1px; width: calc(100% + 1px); }
-.abs-cell.join-l.join-r img { margin-left: -1px; width: calc(100% + 2px); }
+
+
+/* Joined runs as single flex strips: exact internal partitioning, zero seams,
+   zero stretching. */
+.run-strip { display: flex; background: var(--panel2); border: 1px dashed var(--edge);
+    border-radius: 4px; }
+.run-strip.sel { border-style: solid; border-color: var(--accent); z-index: 1; }
+.run-cell { position: relative; flex: 1 1 0; min-width: 0; cursor: pointer; }
+.run-cell img { width: 100%; height: 100%; object-fit: contain;
+    image-rendering: pixelated; display: block; }
+.run-cell.drop-target { box-shadow: inset 3px 0 0 0 var(--accent); }
