@@ -212,7 +212,7 @@
                     var firstCell = manifest.Cells[seg[0]];
                     var lastCell = manifest.Cells[seg[^1]];
                     <div class="abs-cell run-strip @(_platterSel.Contains(seg[0]) ? "sel" : "")"
-                         style="left: @Pct(firstCell.X, canvas); top: @Pct(firstCell.Y, canvas); width: @Pct(lastCell.X + lastCell.W - firstCell.X, canvas); height: @Pct(firstCell.H, canvas);">
+                         style="left: @Pct(firstCell.X, canvas); top: @Pct(firstCell.Y, canvas); width: @Pct(lastCell.X + lastCell.W - firstCell.X, canvas);">
                         @foreach (var memberIndex in seg)
                         {
                             var index = memberIndex;

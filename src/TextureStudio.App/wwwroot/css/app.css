@@ -744,10 +744,14 @@ fluent-progress-ring { flex: none; }
 
 /* Joined runs as single flex strips: exact internal partitioning, zero seams,
    zero stretching. */
-.run-strip { display: flex; background: var(--panel2); border: 1px dashed var(--edge);
-    border-radius: 4px; }
+.run-strip { position: absolute; box-sizing: border-box; margin: 0; display: flex;
+    background: var(--panel2); border: 1px dashed var(--edge); border-radius: 4px;
+    transition: left 0.18s ease, top 0.18s ease; }
 .run-strip.sel { border-style: solid; border-color: var(--accent); z-index: 1; }
-.run-cell { position: relative; flex: 1 1 0; min-width: 0; cursor: pointer; }
+/* aspect-ratio makes every member box exactly square (the strip's height derives
+   from it), so object-fit: contain fills each box with zero letterboxing and zero
+   stretching regardless of fractional pixel widths. */
+.run-cell { position: relative; flex: 1 1 0; min-width: 0; cursor: pointer; aspect-ratio: 1; }
 .run-cell img { width: 100%; height: 100%; object-fit: contain;
     image-rendering: pixelated; display: block; }
 .run-cell.drop-target { box-shadow: inset 3px 0 0 0 var(--accent); }
