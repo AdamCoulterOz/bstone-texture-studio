@@ -1,0 +1,84 @@
+@implements IDisposable
+@inject StudioState State
+
+<div class="jobs-panel">
+    @if (State.Jobs.Count == 0)
+    {
+        <p class="hint">No jobs yet — Generate on a group to start one. Jobs run in the
+            background; click one to reopen its review.</p>
+    }
+    @foreach (var job in State.Jobs)
+    {
+        <div class="job @(State.ActiveJob == job ? "active" : "") state-@job.State.ToString().ToLower()"
+             @onclick="() => State.SelectJob(job)">
+            <div class="job-line">
+                <strong>@job.Group.Name <span class="tab-num">#@job.Number</span></strong>
+                <span class="job-kind">@job.KindLabel</span>
+                @if (job.VariantLabel is not null)
+                {
+                    <span class="job-kind">@job.VariantLabel</span>
+                }
+            </div>
+            <div class="job-line">
+                <span class="job-state">
+                    @if (job.CancelRequested && job.State is JobState.Queued or JobState.Running)
+                    {
+                        <FluentProgressRing Style="width:14px;height:14px" />
+                        <text> Cancelling…</text>
+                    }
+                    else
+                    {
+                        @switch (job.State)
+                        {
+                            case JobState.Queued:
+                                <FluentProgressRing Style="width:14px;height:14px" />
+                                <text> @(job.Countdown > 0 ? $"Starting in {job.Countdown}s" : "Queued…")</text>
+                                break;
+                            case JobState.Running:
+                                <FluentProgressRing Style="width:14px;height:14px" />
+                                <text> Running</text>
+                                break;
+                            case JobState.AwaitingReview:
+                                <text>⏸ Awaiting Review</text>
+                                break;
+                            case JobState.Placing:
+                                <text>⊞ Positioning</text>
+                                break;
+                            case JobState.Failed:
+                                <text>✕ Failed</text>
+                                break;
+                            case JobState.Cancelled:
+                                <text>⊘ Cancelled</text>
+                                break;
+                            case JobState.Done:
+                                <text>✓ Sliced</text>
+                                break;
+                            case JobState.Interrupted:
+                                <text>⚠ Interrupted</text>
+                                break;
+                        }
+                    }
+                </span>
+                <span class="job-time">@job.Created.ToString("HH:mm:ss")</span>
+                @if (!job.CancelRequested && job.State is JobState.Queued or JobState.Running)
+                {
+                    <button class="toast-cancel" title="stop this run"
+                            @onclick="() => State.CancelJob(job)"
+                            @onclick:stopPropagation>Cancel</button>
+                }
+                @if (job.State is JobState.Failed or JobState.Done or JobState.Cancelled or JobState.Interrupted)
+                {
+                    <button class="job-dismiss close-btn" title="remove from list"
+                            @onclick="() => State.DismissJob(job)"
+                            @onclick:stopPropagation><IconDismiss Size="11" /></button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => State.OnChange += StateHasChanged;
+
+    public void Dispose() => State.OnChange -= StateHasChanged;
+}

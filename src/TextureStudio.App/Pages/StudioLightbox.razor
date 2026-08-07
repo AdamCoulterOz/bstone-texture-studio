@@ -1,0 +1,71 @@
+@* Shared lightbox: controls in a left column, the image on the right. ←/→ (keys or the
+   header buttons) navigate when prev/next callbacks are wired; Esc closes. Optional
+   ImageOverlay renders inside the image frame (e.g. a Swap button). *@
+
+<div class="lightbox-backdrop" @onclick="() => OnClose.InvokeAsync()"></div>
+<div class="lightbox split" tabindex="0" @ref="_root" @onkeydown="OnKey" @onclick:stopPropagation>
+    <div class="lightbox-header">
+        <strong>@Title</strong>
+        @if (HasNav)
+        {
+            <span class="lightbox-nav">
+                <button title="previous (←)" @onclick="() => OnPrev.InvokeAsync()">‹</button>
+                <button title="next (→)" @onclick="() => OnNext.InvokeAsync()">›</button>
+            </span>
+        }
+        @if (Hint is not null)
+        {
+            <span class="hint">@Hint</span>
+        }
+        <button class="lightbox-close close-btn" @onclick="() => OnClose.InvokeAsync()"><IconDismiss Size="13" /></button>
+    </div>
+    <div class="lightbox-body">
+        <div class="lightbox-side">
+            @LeftContent
+        </div>
+        <div class="lightbox-stage">
+            <img class="lightbox-image" src="@ImageUrl" alt="@Title" />
+            @ImageOverlay
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? ImageUrl { get; set; }
+    [Parameter] public RenderFragment? LeftContent { get; set; }
+    [Parameter] public RenderFragment? ImageOverlay { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnPrev { get; set; }
+    [Parameter] public EventCallback OnNext { get; set; }
+
+    private bool HasNav => OnPrev.HasDelegate || OnNext.HasDelegate;
+    private ElementReference _root;
+    private bool _focused;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focused)
+        {
+            _focused = true;
+            await _root.FocusAsync();
+        }
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await OnClose.InvokeAsync();
+                break;
+            case "ArrowLeft" when OnPrev.HasDelegate:
+                await OnPrev.InvokeAsync();
+                break;
+            case "ArrowRight" when OnNext.HasDelegate:
+                await OnNext.InvokeAsync();
+                break;
+        }
+    }
+}

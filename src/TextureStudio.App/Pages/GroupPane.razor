@@ -1,0 +1,1217 @@
+@implements IDisposable
+@inject StudioState State
+@inject ImageCodec Codec
+@inject IJSRuntime JS
+
+<div class="pane group-pane">
+    @if (State.Banner is { Length: > 0 } banner)
+    {
+        <div class="pane-banner">
+            <span class="banner-text">@banner</span>
+            <button class="close-btn" title="dismiss" @onclick="State.DismissBanner"><IconDismiss /></button>
+        </div>
+    }
+    @if (State.OpenTabs.Count > 0)
+    {
+    <div class="main-tabs">
+        <div class="main-tab @(State.ActiveJob is null ? "active" : "")" role="button"
+             title="the group sheet grid" @onclick="() => State.SelectGridTab()">
+            <span class="tab-label">⊞ Grid</span>
+        </div>
+        @foreach (var openJob in State.OpenTabs)
+        {
+            var tabJob = openJob;
+            var tabTitle = tabJob.VariantLabel is null
+                ? tabJob.KindLabel
+                : $"{tabJob.KindLabel} · {tabJob.VariantLabel}";
+            <div class="main-tab @(State.ActiveJob == tabJob ? "active" : "")" role="button"
+                 title="@tabTitle"
+                 @onclick="() => State.SelectJob(tabJob)">
+                <span class="tab-glyph">
+                    @switch (tabJob.State)
+                    {
+                        case JobState.Queued:
+                        case JobState.Running: <FluentProgressRing Style="width:12px;height:12px" /> break;
+                        case JobState.AwaitingReview: <text>⏸</text> break;
+                        case JobState.Placing: <text>⊞</text> break;
+                        case JobState.Failed: <text>✕</text> break;
+                        case JobState.Cancelled: <text>⊘</text> break;
+                        case JobState.Interrupted: <text>⚠</text> break;
+                        default: <text>✓</text> break;
+                    }
+                </span>
+                <span class="tab-label">@tabJob.Group.Name <span class="tab-num">#@tabJob.Number</span></span>
+                <span class="close-btn tab-close" title="close tab"
+                      @onclick:stopPropagation @onclick="() => State.CloseJobTab(tabJob)"><IconDismiss Size="11" /></span>
+            </div>
+        }
+    </div>
+    }
+
+    @if (State.ActiveJob is null)
+    {
+    <div class="pane-header">
+        <div class="group-select-wrap">
+        <select @onchange="OnGroupSelected">
+            <option value="-1">— select group —</option>
+            @for (var i = 0; i < State.Project.Groups.Count; i++)
+            {
+                var index = i;
+                <option value="@index" selected="@(State.Project.Groups[index] == State.ActiveGroup)">
+                    @State.Project.Groups[index].Name (@State.Project.Groups[index].TileKeys.Count)
+                </option>
+            }
+        </select>
+        <div class="new-group-wrap">
+            <button title="create a new group" @onclick="() => _newGroupOpen = !_newGroupOpen"><IconAdd /></button>
+            @if (_newGroupOpen)
+            {
+                <div class="menu-backdrop" @onclick="() => _newGroupOpen = false"></div>
+                <div class="new-group-menu">
+                    <input placeholder="new group name" @bind="_newGroupName"
+                           @bind:event="oninput" @onkeydown="OnNewGroupKey" />
+                    <button disabled="@(string.IsNullOrWhiteSpace(_newGroupName))"
+                            @onclick="CreateGroupFromMenu">Create</button>
+                </div>
+            }
+        </div>
+        </div>
+        @if (State.ActiveGroup is { } hdrGroup)
+        {
+            var hdrRun = SelectedRun(hdrGroup);
+            var hdrMerge = hdrRun is null && MergeableSelection(hdrGroup);
+            <div class="header-actions">
+            @if (hdrRun is not null || hdrMerge)
+            {
+                <button class="join-btn @(hdrRun is not null ? "ticked" : "")"
+                        title="@(hdrRun is not null
+                            ? "un-join this seamless run back into independent cells"
+                            : "join the selected cells into one seamless run — butted edge-to-edge, art flows across their shared edges")"
+                        @onclick="() => ToggleSeamless(hdrGroup)">
+                    @if (hdrRun is not null)
+                    {
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3C4.34315 3 3 4.34315 3 6V14C3 15.6569 4.34315 17 6 17H14C15.6569 17 17 15.6569 17 14V6C17 4.34315 15.6569 3 14 3H6ZM4 6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6V14C16 15.1046 15.1046 16 14 16H6C4.89543 16 4 15.1046 4 14V6ZM13.8536 7.85355C14.0488 7.65829 14.0488 7.34171 13.8536 7.14645C13.6583 6.95118 13.3417 6.95118 13.1464 7.14645L8.5 11.7929L6.85355 10.1464C6.65829 9.95118 6.34171 9.95118 6.14645 10.1464C5.95118 10.3417 5.95118 10.6583 6.14645 10.8536L8.14645 12.8536C8.34171 13.0488 8.65829 13.0488 8.85355 12.8536L13.8536 7.85355Z" fill="currentColor"/></svg>
+                    }
+                    else
+                    {
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 6C3 4.34315 4.34315 3 6 3H14C15.6569 3 17 4.34315 17 6V14C17 15.6569 15.6569 17 14 17H6C4.34315 17 3 15.6569 3 14V6ZM6 4C4.89543 4 4 4.89543 4 6V14C4 15.1046 4.89543 16 6 16H14C15.1046 16 16 15.1046 16 14V6C16 4.89543 15.1046 4 14 4H6Z" fill="currentColor"/></svg>
+                    }
+                    <text>Join</text>
+                </button>
+            }
+            <div class="sheet-actions">
+                <label class="icon-btn charref-btn @(hdrGroup.CharacterRefFile is not null ? "active" : "")"
+                       title="@(hdrGroup.CharacterRefFile is not null
+                           ? "character reference attached — click to replace"
+                           : "attach a character reference — any image showing what this sheet's subject looks like; sent with a match-this-identity clause")">
+                    @if (hdrGroup.CharacterRefFile is not null &&
+                         State.CharacterRefUrl(hdrGroup) is { Length: > 0 } charUrl)
+                    {
+                        <img class="charref-thumb" src="@charUrl" alt="character reference" />
+                        <span class="close-btn charref-remove" title="detach the character reference"
+                              @onclick:stopPropagation @onclick:preventDefault
+                              @onclick="() => State.RemoveCharacterRef(hdrGroup)"><IconDismiss Size="10" /></span>
+                    }
+                    else
+                    {
+                        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 5.5C10 7.98528 7.98528 10 5.5 10C3.01472 10 1 7.98528 1 5.5C1 3.01472 3.01472 1 5.5 1C7.98528 1 10 3.01472 10 5.5ZM6 3.5C6 3.22386 5.77614 3 5.5 3C5.22386 3 5 3.22386 5 3.5V5H3.5C3.22386 5 3 5.22386 3 5.5C3 5.77614 3.22386 6 3.5 6H5L5 7.5C5 7.77614 5.22386 8 5.5 8C5.77614 8 6 7.77614 6 7.5V6H7.5C7.77614 6 8 5.77614 8 5.5C8 5.22386 7.77614 5 7.5 5H6V3.5ZM14 4H10.793C10.6944 3.65136 10.5622 3.31679 10.4003 3H14C15.6569 3 17 4.34315 17 6V14C17 15.6569 15.6569 17 14 17H6C4.34315 17 3 15.6569 3 14V10.4003C3.31679 10.5622 3.65136 10.6944 4 10.793V14C4 14.3726 4.10191 14.7215 4.27937 15.0201L8.94868 10.432C9.53227 9.85859 10.4677 9.85859 11.0513 10.432L15.7206 15.0201C15.8981 14.7215 16 14.3726 16 14V6C16 4.89543 15.1046 4 14 4ZM14 7.5C14 8.32843 13.3284 9 12.5 9C11.6716 9 11 8.32843 11 7.5C11 6.67157 11.6716 6 12.5 6C13.3284 6 14 6.67157 14 7.5ZM13 7.5C13 7.22386 12.7761 7 12.5 7C12.2239 7 12 7.22386 12 7.5C12 7.77614 12.2239 8 12.5 8C12.7761 8 13 7.77614 13 7.5ZM4.98824 15.7256C5.28505 15.9 5.63085 16 6 16H14C14.3692 16 14.7149 15.9 15.0118 15.7256L10.3504 11.1453C10.1559 10.9542 9.84409 10.9542 9.64956 11.1453L4.98824 15.7256Z" fill="currentColor"/></svg>
+                    }
+                    <InputFile OnChange="OnCharacterRefSelected" />
+                </label>
+                <button class="icon-btn" title="Copy sheet to clipboard" disabled="@State.Busy"
+                        @onclick="() => State.ExportActiveGroupAsync(toClipboard: true, download: false)">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 4C6 2.89543 6.89543 2 8 2H11.5858C11.9836 2 12.3651 2.15804 12.6464 2.43934L16.5607 6.35355C16.842 6.63486 17 7.01639 17 7.41421V14C17 15.1046 16.1046 16 15 16H8C6.89543 16 6 15.1046 6 14V4ZM8 3C7.44772 3 7 3.44772 7 4V14C7 14.5523 7.44772 15 8 15H15C15.5523 15 16 14.5523 16 14V8H12.5C11.6716 8 11 7.32843 11 6.5V3H8ZM12 3.20711V6.5C12 6.77614 12.2239 7 12.5 7H15.7929L12 3.20711ZM4 5C4 4.44772 4.44772 4 5 4V14C5 15.6569 6.34315 17 8 17L15 17C15 17.5523 14.5523 18 14 18H7.93939C5.76373 18 4 16.2363 4 14.0606V5Z" fill="currentColor"/></svg>
+                </button>
+                <button class="icon-btn" title="sort cells by frame id — press again to reverse"
+                        disabled="@(hdrGroup.TileKeys.Count < 2)"
+                        @onclick="() => SortCells(hdrGroup)"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14.8393 16.7223C14.702 16.8917 14.4849 17 14.25 17C14.0571 17.001 13.8704 16.9277 13.7232 16.7803L10.7193 13.772C10.4269 13.4791 10.4269 13.0043 10.7193 12.7114C11.0118 12.4185 11.486 12.4185 11.7784 12.7114L13.5 14.4441V3.75C13.5 3.33579 13.8364 3 14.25 3C14.6636 3 15 3.33579 15 3.75V14.4336L16.7216 12.7159C17.014 12.423 17.4882 12.423 17.7807 12.7159C18.0731 13.0088 18.0731 13.4837 17.7807 13.7765L14.8393 16.7223ZM6.33931 3.27775C6.202 3.1083 5.98488 3.00001 5.75 3.00001C5.55709 2.99905 5.37038 3.07227 5.2232 3.21967L2.21934 6.22798C1.92689 6.52087 1.92689 6.99575 2.21934 7.28864C2.5118 7.58153 2.98597 7.58153 3.27843 7.28864L5 5.5559V16.25C5 16.6642 5.3364 17 5.75 17C6.1636 17 6.5 16.6642 6.5 16.25V5.5664L8.22157 7.28412C8.51403 7.57702 8.9882 7.57702 9.28066 7.28412C9.57311 6.99123 9.57311 6.51636 9.28066 6.22346L6.33931 3.27775Z" fill="currentColor"/></svg></button>
+                <button class="icon-btn" title="Download sheet" disabled="@State.Busy"
+                        @onclick="() => State.ExportActiveGroupAsync(toClipboard: false, download: true)">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15.5 16.9997C15.7761 16.9997 16 17.2236 16 17.4997C16 17.7452 15.8231 17.9494 15.5899 17.9917L15.5 17.9997H4.5C4.22386 17.9997 4 17.7759 4 17.4997C4 17.2543 4.17688 17.0501 4.41012 17.0078L4.5 16.9997H15.5ZM10.0001 2.00195C10.2456 2.00195 10.4497 2.17896 10.492 2.41222L10.5 2.5021L10.496 14.296L14.1414 10.6476C14.3148 10.4739 14.5842 10.4544 14.7792 10.5892L14.8485 10.647C15.0222 10.8204 15.0418 11.0898 14.907 11.2848L14.8492 11.3541L10.3574 15.8541C10.285 15.9267 10.1957 15.9724 10.1021 15.9911L9.99608 16.0008C9.83511 16.0008 9.69192 15.9247 9.60051 15.8065L5.14386 11.3547C4.94846 11.1595 4.94823 10.8429 5.14336 10.6475C5.3168 10.4739 5.58621 10.4544 5.78117 10.5892L5.85046 10.647L9.496 14.288L9.5 2.50181C9.50008 2.22567 9.724 2.00195 10.0001 2.00195Z" fill="currentColor"/></svg>
+                </button>
+            </div>
+            <div class="cta-actions">
+                @if (StudioState.ThinkingLevelsFor(State.Project.Generation.ModelId) is { Length: > 0 } qualityLevels)
+                {
+                    var resolvedQuality = State.ResolvedThinkingLevel;
+                    var qualityIndex = Math.Max(0, Array.IndexOf(qualityLevels, resolvedQuality));
+                    <label class="effort-slider" title="generation quality (thinking level) for the next runs — currently @resolvedQuality">
+                        Effort
+                        <input type="range" min="0" max="@(qualityLevels.Length - 1)" step="1"
+                               value="@qualityIndex" list="effort-detents"
+                               @oninput="e => SetQuality(qualityLevels[Math.Clamp(int.Parse((string)e.Value!), 0, qualityLevels.Length - 1)])" />
+                        <datalist id="effort-detents">
+                            @for (var d = 0; d < qualityLevels.Length; d++)
+                            {
+                                <option value="@d"></option>
+                            }
+                        </datalist>
+                        <span class="effort-name">@resolvedQuality</span>
+                    </label>
+                }
+                <div class="cta-split">
+                <button class="cta-btn cta-main" title="Generate a redraw sheet for this group"
+                        disabled="@(hdrGroup.TileKeys.Count == 0)" @onclick="Generate">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.08976 3H5.5C4.11929 3 3 4.11929 3 5.5V14.5C3 15.8807 4.11929 17 5.5 17H14.5C15.8807 17 17 15.8807 17 14.5V11.9002C16.8424 11.9657 16.6725 12 16.5 12C16.3275 12 16.1576 11.9657 16 11.9002V12H13V8H13.0991C13.1062 7.98278 13.1137 7.9657 13.1216 7.94878C12.9637 7.90524 12.8135 7.83452 12.6782 7.73884L12.6088 7.68649C12.4027 7.52106 12.2463 7.30107 12.1579 7.05066L12.1537 7.03891L12 6.5663V7H8V4H9.09176C9.03144 3.84028 9 3.67007 9 3.49733C9 3.32652 9.03075 3.15817 9.08976 3ZM4 13H7V16H5.5L5.35554 15.9931C4.59489 15.9204 4 15.2797 4 14.5V13ZM8 16V13H12V16H8ZM13 16V13H16V14.5L15.9931 14.6445C15.9204 15.4051 15.2797 16 14.5 16H13ZM12 12H8V8H12V12ZM4 5.5L4.00687 5.35554C4.07955 4.59489 4.7203 4 5.5 4H7V7H4V5.5ZM7 12H4V8H7V12ZM13.8777 0.282251L14.226 1.35305C14.3343 1.67859 14.5171 1.97441 14.7599 2.21699C15.0026 2.45957 15.2987 2.64223 15.6245 2.75044L16.6961 3.09845L16.7175 3.10381C16.8001 3.13292 16.8716 3.18692 16.9222 3.25836C16.9728 3.3298 17 3.41516 17 3.50268C17 3.5902 16.9728 3.67556 16.9222 3.747C16.8716 3.81844 16.8001 3.87244 16.7175 3.90155L15.6459 4.24956C15.3201 4.35778 15.0241 4.54044 14.7813 4.78302C14.5385 5.0256 14.3558 5.32141 14.2475 5.64696L13.8992 6.71775C13.87 6.80029 13.816 6.87175 13.7445 6.92231C13.673 6.97286 13.5876 7.00001 13.5 7.00001C13.4124 7.00001 13.327 6.97286 13.2555 6.92231C13.2484 6.91732 13.2416 6.91213 13.2349 6.90675C13.1736 6.85755 13.1271 6.79215 13.1008 6.71775L12.7525 5.64696C12.7338 5.59014 12.7128 5.53422 12.6897 5.47932C12.5796 5.21872 12.4202 4.98116 12.2197 4.77999C12.1815 4.74173 12.1421 4.70496 12.1014 4.66973C11.883 4.48064 11.6292 4.33588 11.3541 4.24421L10.2825 3.8962C10.1999 3.86708 10.1284 3.81308 10.0778 3.74164C10.0272 3.6702 10 3.58484 10 3.49733C10 3.40981 10.0272 3.32445 10.0778 3.25301C10.1284 3.18157 10.1999 3.12757 10.2825 3.09845L11.3541 2.75044C11.6759 2.63941 11.9677 2.45549 12.2066 2.21307C12.4454 1.97065 12.625 1.67631 12.7311 1.35305L13.0794 0.282251C13.1085 0.19972 13.1626 0.128252 13.2341 0.0776997C13.3056 0.0271473 13.391 0 13.4786 0C13.5662 0 13.6516 0.0271473 13.7231 0.0776997C13.7946 0.128252 13.8486 0.19972 13.8777 0.282251ZM18.7829 8.21319L18.0175 7.96461C17.7848 7.88731 17.5733 7.75684 17.3999 7.58357C17.2265 7.4103 17.0959 7.199 17.0186 6.96647L16.7698 6.20161C16.749 6.14266 16.7104 6.09161 16.6593 6.05551C16.6083 6.0194 16.5473 6.00001 16.4847 6.00001C16.4221 6.00001 16.3611 6.0194 16.31 6.05551C16.259 6.09161 16.2204 6.14266 16.1996 6.20161L15.9508 6.96647C15.875 7.19737 15.7467 7.40762 15.5761 7.58077C15.4055 7.75392 15.1971 7.8853 14.9672 7.96461L14.2018 8.21319C14.1428 8.23398 14.0917 8.27255 14.0555 8.32358C14.0194 8.37461 14 8.43558 14 8.4981C14 8.56061 14.0194 8.62158 14.0555 8.67261C14.0917 8.72364 14.1428 8.76221 14.2018 8.78301L14.9672 9.03158C15.2003 9.10926 15.412 9.24032 15.5855 9.41428C15.7589 9.58824 15.8893 9.80031 15.9661 10.0335L16.2149 10.7984C16.2357 10.8574 16.2743 10.9084 16.3254 10.9445C16.3764 10.9806 16.4374 11 16.5 11C16.5626 11 16.6236 10.9806 16.6746 10.9445C16.7257 10.9084 16.7643 10.8574 16.7851 10.7984L17.0339 10.0335C17.1113 9.80101 17.2418 9.58972 17.4152 9.41645C17.5886 9.24317 17.8001 9.11271 18.0328 9.03541L18.7982 8.78683C18.8572 8.76603 18.9083 8.72746 18.9445 8.67643C18.9806 8.62541 19 8.56443 19 8.50192C19 8.43941 18.9806 8.37844 18.9445 8.32741C18.9083 8.27638 18.8572 8.23781 18.7982 8.21701L18.7829 8.21319Z" fill="currentColor"/></svg>
+                    Generate
+                </button>
+                <button class="cta-btn cta-arrow" title="more actions"
+                        @onclick="() => _ctaMenuOpen = !_ctaMenuOpen"><IconChevron Dir="down" Size="14" /></button>
+                @if (_ctaMenuOpen)
+                {
+                    <div class="menu-backdrop" @onclick="() => _ctaMenuOpen = false"></div>
+                    <div class="cta-menu">
+                        <label class="cta-menu-item @(State.Busy ? "disabled" : "")"
+                               title="Import a result sheet for this group">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 4C17.7761 4 18 4.22386 18 4.5V15.5C18 15.7761 17.7761 16 17.5 16C17.2239 16 17 15.7761 17 15.5V4.5C17 4.22386 17.2239 4 17.5 4ZM2 10C2 9.72386 2.22386 9.5 2.5 9.5H13.2929L10.1464 6.35355C9.95118 6.15829 9.95118 5.84171 10.1464 5.64645C10.3417 5.45118 10.6583 5.45118 10.8536 5.64645L14.8536 9.64645C14.9015 9.69439 14.9377 9.74964 14.9621 9.80861C14.9861 9.86669 14.9996 9.9303 15 9.997L15 10L15 10.003C14.9992 10.13 14.9504 10.2567 14.8536 10.3536L10.8536 14.3536C10.6583 14.5488 10.3417 14.5488 10.1464 14.3536C9.95118 14.1583 9.95118 13.8417 10.1464 13.6464L13.2929 10.5H2.5C2.22386 10.5 2 10.2761 2 10Z" fill="currentColor"/></svg>
+                            Import
+                            <InputFile OnChange="OnImportCtaSelected" />
+                        </label>
+                    </div>
+                }
+                </div>
+            </div>
+            </div>
+        }
+    </div>
+
+    @if (State.ActiveGroup is { } group)
+    {
+        var planned = State.PlanGroup(group);
+        var manifest = planned.Manifest;
+        var canvas = (double)manifest.CanvasWidth;
+        <div class="platter-row">
+        <div class="platter-abs" style="width: min(100%, @(planned.Side * 104)px);">
+            @for (var i = 0; i < manifest.Cells.Count; i++)
+            {
+                var index = i;
+                var cell = manifest.Cells[index];
+                var key = cell.TileKey;
+                var joinL = cell.Seamless && index > 0 &&
+                    manifest.Cells[index - 1].Y == cell.Y &&
+                    manifest.Cells[index - 1].X + manifest.Cells[index - 1].W == cell.X;
+                var joinR = cell.Seamless && index + 1 < manifest.Cells.Count &&
+                    manifest.Cells[index + 1].Y == cell.Y &&
+                    manifest.Cells[index + 1].X == cell.X + cell.W;
+                <div class="platter-cell abs-cell @(_platterSel.Contains(index) ? "sel" : "") @(joinL ? "join-l" : "") @(joinR ? "join-r" : "") @(_dropTarget == index ? "drop-target" : "")"
+                     style="left: @Pct(cell.X, canvas); top: @Pct(cell.Y, canvas); width: @Pct(cell.W, canvas); height: @Pct(cell.H, canvas);"
+                     @onclick="e => CellClick(group, index, e)"
+                     @ondragenter="() => _dropTarget = index"
+                     @ondragover:preventDefault
+                     @ondrop="() => DropOn(group, index)">
+                    @if (State.GetUrl(key) is { Length: > 0 } url)
+                    {
+                        <img src="@url" alt="@key" draggable="true"
+                             @ondragstart="() => DragPayload.Keys = DragKeysFor(group, index)"
+                             @ondragend="() => _dropTarget = null" />
+                    }
+                    <span class="cell-label">@ShortKey(key)</span>
+                    <button class="cell-remove close-btn" @onclick:stopPropagation
+                            @onclick="() => Remove(group, index)"><IconDismiss Size="11" /></button>
+                </div>
+            }
+            @for (var g = 0; g < planned.Ghosts.Count; g++)
+            {
+                var ghost = planned.Ghosts[g];
+                var ghostLead = g == 0;
+                <div class="platter-cell ghost-cell abs-cell @(ghostLead && _dropTarget == group.TileKeys.Count ? "drop-target" : "")"
+                     style="left: @Pct(ghost.X, canvas); top: @Pct(ghost.Y, canvas); width: @Pct(manifest.TilePx, canvas); height: @Pct(manifest.TilePx, canvas);"
+                     title="empty cell in the generated sheet — drop tiles here"
+                     @ondragenter="() => _dropTarget = group.TileKeys.Count"
+                     @ondragover:preventDefault
+                     @ondrop="() => DropOn(group, group.TileKeys.Count)">
+                    @if (group.TileKeys.Count == 0)
+                    {
+                        <span class="cell-label">drop here</span>
+                    }
+                </div>
+            }
+        </div>
+        <textarea class="prompt-box" rows="3" placeholder="group prompt (appended to style prompt)"
+                  @ref="_promptRef"
+                  @bind="group.PromptTemplate" @bind:event="oninput"
+                  @bind:after="OnPromptInput"></textarea>
+        </div>
+
+        @if (State.ApprovedReferenceCandidates(group) is { Count: > 0 } refCandidates)
+        {
+            <div class="approved-ref">
+                <label class="toggle"
+                       title="attach a grid of these already-approved frames as an identity reference on this group's generations">
+                    <input type="checkbox" checked="@group.UseApprovedRef"
+                           @onchange="e => { group.UseApprovedRef = (bool)e.Value!; State.Notify(); }" />
+                    approved frames ref (@State.ApprovedReferenceKeys(group).Count of @refCandidates.Count attached)
+                </label>
+                @if (group.UseApprovedRef)
+                {
+                    <div class="approved-ref-thumbs">
+                        @foreach (var refKey in refCandidates)
+                        {
+                            var key = refKey;
+                            var excluded = group.ApprovedRefExcluded.Contains(key);
+                            <img class="approved-thumb @(excluded ? "excluded" : "")"
+                                 src="@State.GetRedrawArtUrl(key)" alt="@key"
+                                 title="@key — click to @(excluded ? "include" : "exclude")"
+                                 @onclick="() => ToggleApprovedRefKey(group, key)" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+        @if (group.Revisions.Count > 0)
+        {
+            <div class="revisions">
+                <span class="hint">revisions:</span>
+                @for (var r = group.Revisions.Count - 1; r >= 0; r--)
+                {
+                    var revision = group.Revisions[r];
+                    var number = r + 1;
+                    <button class="revision-chip @(group.ActiveRevisionId == revision.Id ? "active" : "")"
+                            title="@revision.Kind · @revision.Created.ToString("d MMM HH:mm") · @revision.TileKeys.Count tiles"
+                            @onclick="() => State.SwitchRevisionAsync(group, revision.Id)">
+                        @number
+                    </button>
+                }
+            </div>
+        }
+
+    }
+    }
+
+    @if (State.ActiveJob is { } job)
+    {
+            <div class="pending @(job.State.ToString().ToLower())">
+                @if (job.State == JobState.Queued)
+                {
+                    <div class="job-hero">
+                        <FluentProgressRing Style="width:28px;height:28px" />
+                        <h3>@job.KindLabel @(job.Countdown > 0 ? $"starting in {job.Countdown}s…" : "queued…")</h3>
+                        <p>'@job.Group.Name' #@job.Number — cancel within the countdown and the API call never fires</p>
+                        <button disabled="@job.CancelRequested"
+                                @onclick="() => State.CancelJob(job)">
+                            @(job.CancelRequested ? "cancelling…" : "Cancel")
+                        </button>
+                    </div>
+                }
+                else if (job.State == JobState.Running)
+                {
+                    <div class="job-hero">
+                        <FluentProgressRing Style="width:28px;height:28px" />
+                        <h3>@job.KindLabel running for '@job.Group.Name' #@job.Number</h3>
+                        <p>started @job.Created.ToString("HH:mm:ss") — you can keep working</p>
+                        <button disabled="@job.CancelRequested"
+                                @onclick="() => State.CancelJob(job)">
+                            @(job.CancelRequested ? "cancelling…" : "Cancel")
+                        </button>
+                    </div>
+                }
+                else if (job.State is JobState.Cancelled or JobState.Interrupted)
+                {
+                    <div class="job-hero">
+                        <span class="hero-glyph">@(job.State == JobState.Cancelled ? "⊘" : "⚠")</span>
+                        <h3>@job.KindLabel @(job.State == JobState.Cancelled ? "cancelled" : "interrupted")</h3>
+                        <p>@(job.State == JobState.Cancelled
+                            ? "this run was stopped — no result was produced"
+                            : "the app closed while this ran — no result was produced")</p>
+                        <button @onclick="() => State.DismissJob(job)">Dismiss</button>
+                    </div>
+                }
+                else if (job.State == JobState.Failed)
+                {
+                    <div class="job-hero">
+                        <span class="hero-glyph">✕</span>
+                        <h3>@job.KindLabel failed</h3>
+                        <p class="error-text">@job.Error</p>
+                        <button @onclick="() => State.DismissJob(job)">Dismiss</button>
+                    </div>
+                }
+                else if (job.State == JobState.AwaitingReview && job.RawPng is not null)
+                {
+                    var revBlocks = job.Blocks.OrderBy(b => b.ColorIndex).ToList();
+                    var activeSet = revBlocks.FirstOrDefault(b => b.ColorIndex == _activeBlock);
+                    var canAddSet = revBlocks.Count < 4 &&
+                        (revBlocks.Count == 0 || (activeSet?.Regions.Count ?? 0) > 0);
+                    var canRevise = revBlocks.Sum(b => b.Regions.Count) > 0 &&
+                        revBlocks.All(b => !string.IsNullOrWhiteSpace(b.Prompt));
+                    <div class="pending-header results-bar">
+                        <button class="cta2-btn square" title="add a revision set — mark areas on the image, then describe the change"
+                                disabled="@(!canAddSet)" @onclick="() => AddRevisionSet(job)"><IconAdd Size="14" /></button>
+                        <button class="cta2-btn" title="submit the marked revision sets"
+                                disabled="@(!canRevise)" @onclick="() => State.ReviseJobAsync(job)">Revise</button>
+                        <button class="@(_showPrompt ? "active" : "")"
+                                @onclick="() => _showPrompt = !_showPrompt">Prompt</button>
+                        <span class="pending-title">Review &amp; Revise</span>
+                        <span class="bar-spacer"></span>
+                        <button class="cta-btn" title="key and position this sheet's tiles"
+                                @onclick="() => State.PrepareSliceAsync(job)">Next</button>
+                        <button class="danger-btn" title="discard this result"
+                                @onclick="() => State.DismissJob(job)">Discard</button>
+                    </div>
+                    @foreach (var revBlock in revBlocks)
+                    {
+                        var set = revBlock;
+                        var setActive = _activeBlock == set.ColorIndex;
+                        <div class="revset-row @(setActive ? "active" : "")"
+                             title="@(setActive ? "" : "click to make this the active set")"
+                             @onclick="() => _activeBlock = set.ColorIndex">
+                            <span class="revset-box c@(set.ColorIndex)"
+                                  title="@RevisionTools.ColorNames[set.ColorIndex] set — @set.Regions.Count marked area(s); drag on the image to add more">@set.Regions.Count</span>
+                            <textarea class="revset-prompt" rows="1"
+                                      placeholder="what changes in the @RevisionTools.ColorNames[set.ColorIndex] areas?"
+                                      @bind="set.Prompt" @bind:event="oninput"></textarea>
+                            <button class="close-btn revset-clear" title="remove this revision set"
+                                    @onclick:stopPropagation
+                                    @onclick="() => RemoveRevisionSet(job, set)"><IconDismiss /></button>
+                        </div>
+                    }
+                    @if (_showPrompt)
+                    {
+                        <div class="prompt-view">
+                            @for (var p = job.Prompts.Count - 1; p >= 0; p--)
+                            {
+                                var promptIndex = p;
+                                <h6>
+                                    @(promptIndex == 0 ? "generation prompt" : $"revision {promptIndex} prompt")
+                                    <button class="prompt-copy" title="copy this prompt"
+                                            @onclick="() => CopyPromptAsync(job.Prompts[promptIndex])">copy</button>
+                                </h6>
+                                <pre>@job.Prompts[promptIndex]</pre>
+                            }
+                            @if (job.Prompts.Count == 0)
+                            {
+                                <span class="hint">no prompt recorded (imported sheet)</span>
+                            }
+                        </div>
+                    }
+                    <div class="pending-canvas" @ref="_canvasRef"
+                         style="width:min(100%, 1100px); aspect-ratio:@job.SheetWidth / @job.SheetHeight"
+                         @onpointerdown="e => PointerDown(e)"
+                         @onpointermove="e => PointerMove(e, job)"
+                         @onpointerup="() => PointerUp(job)">
+                        @if (job.PreviewUrl is not null)
+                        {
+                            <img src="@job.PreviewUrl" alt="pending sheet" draggable="false" />
+                        }
+                        @foreach (var block in job.Blocks)
+                        {
+                            @foreach (var region in block.Regions)
+                            {
+                                <div class="region c@(block.ColorIndex)" style="@RegionStyle(region, job)"></div>
+                            }
+                        }
+                        @if (_dragRegion is { } dragRegion)
+                        {
+                            <div class="region dragging c@(_activeBlock)" style="@RegionStyle(dragRegion, job)"></div>
+                        }
+                    </div>
+                }
+                else if (job.State == JobState.Placing && job.Placements is not null)
+                {
+                    var includedCount = job.Placements.Count(x => x.Included);
+                    <div class="pending-header results-bar">
+                        <button @onclick="() => State.CancelSlicePlacement(job)">Back</button>
+                        <div class="seg zoom-seg">
+                            <button class="seg-btn" title="smaller tiles"
+                                    @onclick="() => _placementPx = Math.Max(160, _placementPx - 40)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 10C3 9.72386 3.22386 9.5 3.5 9.5H16.5C16.7761 9.5 17 9.72386 17 10C17 10.2761 16.7761 10.5 16.5 10.5H3.5C3.22386 10.5 3 10.2761 3 10Z" fill="currentColor"/></svg></button>
+                            <button class="seg-btn" title="larger tiles"
+                                    @onclick="() => _placementPx = Math.Min(400, _placementPx + 40)"><IconAdd Size="14" /></button>
+                        </div>
+                        <button class="@(_placementHelpOpen ? "active" : "")"
+                                @onclick="() => _placementHelpOpen = !_placementHelpOpen">Help</button>
+                        <span class="pending-title">Adjust &amp; Apply</span>
+                        <span class="bar-spacer"></span>
+                        <button class="cta-btn" disabled="@(includedCount == 0)"
+                                @onclick="() => State.ApplySliceAsync(job)">
+                            Apply <span class="pill pill-review">@includedCount</span></button>
+                        <button class="danger-btn" title="discard this result"
+                                @onclick="() => State.DismissJob(job)">Discard</button>
+                    </div>
+                    @if (_placementHelpOpen)
+                    {
+                        <div class="placement-help">
+                            <div class="help-row"><span class="help-what">Move</span>
+                                drag the sprite, or arrow keys nudge 1px (<kbd>shift</kbd> = ×8)</div>
+                            <div class="help-row"><span class="help-what">Scale</span>
+                                slider, <kbd>[</kbd> <kbd>]</kbd>, or hold <kbd>s</kbd> + <kbd>←</kbd><kbd>→</kbd></div>
+                            <div class="help-row"><span class="help-what"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 3C13.866 3 17 6.13401 17 10C17 12.548 15.6378 14.776 13.6025 16H16C16.2761 16 16.5 16.2239 16.5 16.5C16.5 16.7761 16.2761 17 16 17H12.5C12.2239 17 12 16.7761 12 16.5V13C12 12.7239 12.2239 12.5 12.5 12.5C12.7761 12.5 13 12.7239 13 13V15.1914C14.7922 14.1538 16 12.2198 16 10C16 6.68629 13.3137 4 10 4C6.68629 4 4 6.68629 4 10C4 10.2761 3.77614 10.5 3.5 10.5C3.22386 10.5 3 10.2761 3 10C3 6.13401 6.13401 3 10 3ZM10 8C11.1046 8 12 8.89543 12 10C12 11.1046 11.1046 12 10 12C8.89543 12 8 11.1046 8 10C8 8.89543 8.89543 8 10 8ZM10 9C9.44772 9 9 9.44772 9 10C9 10.5523 9.44772 11 10 11C10.5523 11 11 10.5523 11 10C11 9.44772 10.5523 9 10 9Z" fill="currentColor"/></svg> Rotate</span>
+                                slider, or <kbd>,</kbd> <kbd>.</kbd> (<kbd>shift</kbd> = 15°)</div>
+                            <div class="help-row"><span class="help-what"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.85355 2.64645C6.04882 2.84171 6.04882 3.15829 5.85355 3.35355L4.20711 5H11C14.3137 5 17 7.68629 17 11C17 14.3137 14.3137 17 11 17C7.68629 17 5 14.3137 5 11C5 10.7239 5.22386 10.5 5.5 10.5C5.77614 10.5 6 10.7239 6 11C6 13.7614 8.23858 16 11 16C13.7614 16 16 13.7614 16 11C16 8.23858 13.7614 6 11 6H4.20711L5.85355 7.64645C6.04882 7.84171 6.04882 8.15829 5.85355 8.35355C5.65829 8.54882 5.34171 8.54882 5.14645 8.35355L2.64645 5.85355C2.45118 5.65829 2.45118 5.34171 2.64645 5.14645L5.14645 2.64645C5.34171 2.45118 5.65829 2.45118 5.85355 2.64645Z" fill="currentColor"/></svg> Reset</span>
+                                back to the automatic placement — <kbd>0</kbd></div>
+                            <div class="help-row"><span class="help-what"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3C4.34315 3 3 4.34315 3 6V14C3 15.6569 4.34315 17 6 17H14C15.6569 17 17 15.6569 17 14V6C17 4.34315 15.6569 3 14 3H6ZM4 6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6V14C16 15.1046 15.1046 16 14 16H6C4.89543 16 4 15.1046 4 14V6ZM7.5 10C7.5 11.3807 8.61929 12.5 10 12.5C11.3807 12.5 12.5 11.3807 12.5 10C12.5 8.61929 11.3807 7.5 10 7.5C8.61929 7.5 7.5 8.61929 7.5 10ZM6.53544 10.5H6C5.72386 10.5 5.5 10.2761 5.5 10C5.5 9.72386 5.72386 9.5 6 9.5H6.53544C6.7547 7.96715 7.96715 6.7547 9.5 6.53544V6C9.5 5.72386 9.72386 5.5 10 5.5C10.2761 5.5 10.5 5.72386 10.5 6V6.53544C12.0328 6.7547 13.2453 7.96715 13.4646 9.5H14C14.2761 9.5 14.5 9.72386 14.5 10C14.5 10.2761 14.2761 10.5 14 10.5H13.4646C13.2453 12.0328 12.0328 13.2453 10.5 13.4646V14C10.5 14.2761 10.2761 14.5 10 14.5C9.72386 14.5 9.5 14.2761 9.5 14V13.4646C7.96715 13.2453 6.7547 12.0328 6.53544 10.5ZM11.25 10C11.25 10.6904 10.6904 11.25 10 11.25C9.30964 11.25 8.75 10.6904 8.75 10C8.75 9.30964 9.30964 8.75 10 8.75C10.6904 8.75 11.25 9.30964 11.25 10Z" fill="currentColor"/></svg> Match</span>
+                                align to the currently applied redraw's bounds — <kbd>a</kbd></div>
+                            <div class="help-row"><span class="help-what"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 2C3.22386 2 3 2.22386 3 2.5V17.5C3 17.7761 3.22386 18 3.5 18C3.77614 18 4 17.7761 4 17.5V2.5C4 2.22386 3.77614 2 3.5 2ZM7 11C5.89543 11 5 11.8954 5 13L5 14C5 15.1046 5.89543 16 7 16H12C13.1046 16 14 15.1046 14 14V13C14 11.8954 13.1046 11 12 11H7ZM6 13C6 12.4477 6.44772 12 7 12H12C12.5523 12 13 12.4477 13 13V14C13 14.5523 12.5523 15 12 15H7C6.44772 15 6 14.5523 6 14L6 13ZM5 6C5 4.89543 5.89543 4 7 4L15 4C16.1046 4 17 4.89543 17 6V7C17 8.10457 16.1046 9 15 9L7 9C5.89543 9 5 8.10457 5 7L5 6ZM7 5C6.44772 5 6 5.44772 6 6L6 7C6 7.55228 6.44772 8 7 8L15 8C15.5523 8 16 7.55228 16 7V6C16 5.44771 15.5523 5 15 5L7 5Z" fill="currentColor"/></svg><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 18C10.2239 18 10 17.7761 10 17.5V16H8C6.89543 16 6 15.1046 6 14V13C6 11.8954 6.89543 11 8 11H10V9H6C4.89543 9 4 8.10457 4 7V6C4 4.89543 4.89543 4 6 4H10V2.5C10 2.22386 10.2239 2 10.5 2C10.7761 2 11 2.22386 11 2.5V4H15C16.1046 4 17 4.89543 17 6V7C17 8.10457 16.1046 9 15 9H11V11H13C14.1046 11 15 11.8954 15 13V14C15 15.1046 14.1046 16 13 16H11V17.5C11 17.7761 10.7761 18 10.5 18ZM6 5C5.44771 5 5 5.44772 5 6V7C5 7.55228 5.44771 8 6 8H15C15.5523 8 16 7.55228 16 7V6C16 5.44772 15.5523 5 15 5H6ZM8 12C7.44772 12 7 12.4477 7 13V14C7 14.5523 7.44772 15 8 15H13C13.5523 15 14 14.5523 14 14V13C14 12.4477 13.5523 12 13 12H8Z" fill="currentColor"/></svg><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.5 2C16.7761 2 17 2.22386 17 2.5V17.5C17 17.7761 16.7761 18 16.5 18C16.2239 18 16 17.7761 16 17.5V2.5C16 2.22386 16.2239 2 16.5 2ZM13 11C14.1046 11 15 11.8954 15 13V14C15 15.1046 14.1046 16 13 16H8C6.89543 16 6 15.1046 6 14V13C6 11.8954 6.89543 11 8 11H13ZM14 13C14 12.4477 13.5523 12 13 12H8C7.44771 12 7 12.4477 7 13V14C7 14.5523 7.44771 15 8 15H13C13.5523 15 14 14.5523 14 14V13ZM15 6C15 4.89543 14.1046 4 13 4L5 4C3.89543 4 3 4.89543 3 6V7C3 8.10457 3.89543 9 5 9L13 9C14.1046 9 15 8.10457 15 7V6ZM13 5C13.5523 5 14 5.44772 14 6V7C14 7.55228 13.5523 8 13 8L5 8C4.44771 8 4 7.55228 4 7V6C4 5.44771 4.44772 5 5 5L13 5Z" fill="currentColor"/></svg><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3.5C2 3.22386 2.22386 3 2.5 3H17.5C17.7761 3 18 3.22386 18 3.5C18 3.77614 17.7761 4 17.5 4H2.5C2.22386 4 2 3.77614 2 3.5ZM11 7C11 5.89543 11.8954 5 13 5L14 5C15.1046 5 16 5.89543 16 7V12C16 13.1046 15.1046 14 14 14H13C11.8954 14 11 13.1046 11 12V7ZM13 6C12.4477 6 12 6.44772 12 7V12C12 12.5523 12.4477 13 13 13H14C14.5523 13 15 12.5523 15 12V7C15 6.44772 14.5523 6 14 6L13 6ZM6 5C4.89543 5 4 5.89543 4 7L4 15C4 16.1046 4.89543 17 6 17H7C8.10457 17 9 16.1046 9 15L9 7C9 5.89543 8.10457 5 7 5L6 5ZM5 7C5 6.44772 5.44772 6 6 6L7 6C7.55228 6 8 6.44772 8 7L8 15C8 15.5523 7.55228 16 7 16H6C5.44771 16 5 15.5523 5 15L5 7Z" fill="currentColor"/></svg><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 9.5C18 9.77614 17.7761 10 17.5 10H16V12C16 13.1046 15.1046 14 14 14H13C11.8954 14 11 13.1046 11 12V10H9V14C9 15.1046 8.10457 16 7 16H6C4.89543 16 4 15.1046 4 14V10H2.5C2.22386 10 2 9.77614 2 9.5C2 9.22386 2.22386 9 2.5 9H4V5C4 3.89543 4.89543 3 6 3H7C8.10457 3 9 3.89543 9 5V9H11V7C11 5.89543 11.8954 5 13 5H14C15.1046 5 16 5.89543 16 7V9H17.5C17.7761 9 18 9.22386 18 9.5ZM5 14C5 14.5523 5.44772 15 6 15H7C7.55228 15 8 14.5523 8 14V5C8 4.44772 7.55228 4 7 4H6C5.44772 4 5 4.44772 5 5V14ZM12 12C12 12.5523 12.4477 13 13 13H14C14.5523 13 15 12.5523 15 12V7C15 6.44772 14.5523 6 14 6H13C12.4477 6 12 6.44772 12 7V12Z" fill="currentColor"/></svg><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 16.5C2 16.7761 2.22386 17 2.5 17H17.5C17.7761 17 18 16.7761 18 16.5C18 16.2239 17.7761 16 17.5 16H2.5C2.22386 16 2 16.2239 2 16.5ZM11 13C11 14.1046 11.8954 15 13 15H14C15.1046 15 16 14.1046 16 13V8C16 6.89543 15.1046 6 14 6H13C11.8954 6 11 6.89543 11 8V13ZM13 14C12.4477 14 12 13.5523 12 13V8C12 7.44771 12.4477 7 13 7H14C14.5523 7 15 7.44771 15 8V13C15 13.5523 14.5523 14 14 14H13ZM6 15C4.89543 15 4 14.1046 4 13L4 5C4 3.89543 4.89543 3 6 3H7C8.10457 3 9 3.89543 9 5L9 13C9 14.1046 8.10457 15 7 15H6ZM5 13C5 13.5523 5.44772 14 6 14H7C7.55228 14 8 13.5523 8 13L8 5C8 4.44771 7.55228 4 7 4H6C5.44771 4 5 4.44772 5 5L5 13Z" fill="currentColor"/></svg></span>
+                                align on visible pixels — <kbd>l</kbd> <kbd>c</kbd> <kbd>r</kbd> <kbd>t</kbd> <kbd>m</kbd> <kbd>b</kbd></div>
+                            <div class="help-row"><span class="help-what">Frames</span>
+                                <kbd>tab</kbd> / <kbd>shift</kbd>+<kbd>tab</kbd> move between frames</div>
+                            <div class="help-row"><span class="help-what">Keep as-is</span>
+                                the ghost underneath is the original; untick any tile to keep its existing art</div>
+                        </div>
+                    }
+                    <div class="placement-grid" style="--stage:@(_placementPx)px">
+                        @foreach (var placement in job.Placements)
+                        {
+                            var p = placement;
+                            <div class="placement-cell @(p.Edited ? "edited" : "") @(p.Included ? "" : "skipped") @(_placementFocus == p ? "focused" : "")">
+                                @if (p.IsSprite)
+                                {
+                                    <div class="placement-stage" tabindex="0"
+                                         @ref="_stageRefs[p]"
+                                         @onpointerdown="e => PlacementDown(p, e)"
+                                         @onpointerdown:preventDefault
+                                         @onpointermove="e => PlacementMove(p, e)"
+                                         @onpointerup="PlacementUp"
+                                         @onpointerleave="PlacementUp"
+                                         @onfocus="() => _placementFocus = p"
+                                         @onblur="() => _scaleHeld = false"
+                                         @onkeydown="e => PlacementKey(p, e)"
+                                         @onkeydown:preventDefault
+                                         @onkeyup="PlacementKeyUp">
+                                        <img class="placement-ghost" src="@State.GetOriginalUrl(p.TileKey)"
+                                             alt="original" draggable="false" />
+                                        <span class="cell-label placement-id">@PlacementLabel(p)</span>
+                                        @if (p.PreviewUrl is not null)
+                                        {
+                                            <img class="placement-art" src="@p.PreviewUrl" alt="@p.TileKey"
+                                                 draggable="false" style="@PlacementStyle(p)" />
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="placement-stage wall">
+                                        <span class="cell-label placement-id">@PlacementLabel(p)</span>
+                                        @if (p.PreviewUrl is not null)
+                                        {
+                                            <img class="placement-art wall" src="@p.PreviewUrl"
+                                                 alt="@p.TileKey" draggable="false" />
+                                        }
+                                    </div>
+                                }
+                                <div class="placement-controls">
+                                    <input type="checkbox" title="include this tile in the import"
+                                           checked="@p.Included"
+                                           @onchange="e => { p.Included = (bool)e.Value!; State.SchedulePlacementSave(); }" />
+                                    @if (p.IsSprite)
+                                    {
+                                        <input type="range" min="10" max="250" disabled="@(!p.Included)"
+                                               value="@((int)Math.Round(p.Scale * 100))"
+                                               @oninput="e => SetPlacementScale(p, e)" />
+                                        <span class="placement-scale">@((int)Math.Round(p.Scale * 100))%</span>
+                                        @if (State.HasRedraw(p.TileKey))
+                                        {
+                                            <button class="placement-reset" title="align art to the currently applied redraw's bounds (a)"
+                                                    disabled="@(!p.Included)"
+                                                    @onclick="() => { MatchApplied(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 3C4.34315 3 3 4.34315 3 6V14C3 15.6569 4.34315 17 6 17H14C15.6569 17 17 15.6569 17 14V6C17 4.34315 15.6569 3 14 3H6ZM4 6C4 4.89543 4.89543 4 6 4H14C15.1046 4 16 4.89543 16 6V14C16 15.1046 15.1046 16 14 16H6C4.89543 16 4 15.1046 4 14V6ZM7.5 10C7.5 11.3807 8.61929 12.5 10 12.5C11.3807 12.5 12.5 11.3807 12.5 10C12.5 8.61929 11.3807 7.5 10 7.5C8.61929 7.5 7.5 8.61929 7.5 10ZM6.53544 10.5H6C5.72386 10.5 5.5 10.2761 5.5 10C5.5 9.72386 5.72386 9.5 6 9.5H6.53544C6.7547 7.96715 7.96715 6.7547 9.5 6.53544V6C9.5 5.72386 9.72386 5.5 10 5.5C10.2761 5.5 10.5 5.72386 10.5 6V6.53544C12.0328 6.7547 13.2453 7.96715 13.4646 9.5H14C14.2761 9.5 14.5 9.72386 14.5 10C14.5 10.2761 14.2761 10.5 14 10.5H13.4646C13.2453 12.0328 12.0328 13.2453 10.5 13.4646V14C10.5 14.2761 10.2761 14.5 10 14.5C9.72386 14.5 9.5 14.2761 9.5 14V13.4646C7.96715 13.2453 6.7547 12.0328 6.53544 10.5ZM11.25 10C11.25 10.6904 10.6904 11.25 10 11.25C9.30964 11.25 8.75 10.6904 8.75 10C8.75 9.30964 9.30964 8.75 10 8.75C10.6904 8.75 11.25 9.30964 11.25 10Z" fill="currentColor"/></svg></button>
+                                        }
+                                        <button class="placement-reset" title="back to auto placement (0)"
+                                                disabled="@(!p.Included)"
+                                                @onclick="() => { ResetPlacement(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.85355 2.64645C6.04882 2.84171 6.04882 3.15829 5.85355 3.35355L4.20711 5H11C14.3137 5 17 7.68629 17 11C17 14.3137 14.3137 17 11 17C7.68629 17 5 14.3137 5 11C5 10.7239 5.22386 10.5 5.5 10.5C5.77614 10.5 6 10.7239 6 11C6 13.7614 8.23858 16 11 16C13.7614 16 16 13.7614 16 11C16 8.23858 13.7614 6 11 6H4.20711L5.85355 7.64645C6.04882 7.84171 6.04882 8.15829 5.85355 8.35355C5.65829 8.54882 5.34171 8.54882 5.14645 8.35355L2.64645 5.85355C2.45118 5.65829 2.45118 5.34171 2.64645 5.14645L5.14645 2.64645C5.34171 2.45118 5.65829 2.45118 5.85355 2.64645Z" fill="currentColor"/></svg></button>
+                                    }
+                                    else
+                                    {
+                                        <span class="placement-scale">wall</span>
+                                    }
+                                </div>
+                                @if (p.IsSprite)
+                                {
+                                    <div class="placement-rot">
+                                        <span class="placement-scale"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 3C13.866 3 17 6.13401 17 10C17 12.548 15.6378 14.776 13.6025 16H16C16.2761 16 16.5 16.2239 16.5 16.5C16.5 16.7761 16.2761 17 16 17H12.5C12.2239 17 12 16.7761 12 16.5V13C12 12.7239 12.2239 12.5 12.5 12.5C12.7761 12.5 13 12.7239 13 13V15.1914C14.7922 14.1538 16 12.2198 16 10C16 6.68629 13.3137 4 10 4C6.68629 4 4 6.68629 4 10C4 10.2761 3.77614 10.5 3.5 10.5C3.22386 10.5 3 10.2761 3 10C3 6.13401 6.13401 3 10 3ZM10 8C11.1046 8 12 8.89543 12 10C12 11.1046 11.1046 12 10 12C8.89543 12 8 11.1046 8 10C8 8.89543 8.89543 8 10 8ZM10 9C9.44772 9 9 9.44772 9 10C9 10.5523 9.44772 11 10 11C10.5523 11 11 10.5523 11 10C11 9.44772 10.5523 9 10 9Z" fill="currentColor"/></svg></span>
+                                        <input type="range" min="-180" max="180" step="1" disabled="@(!p.Included)"
+                                               value="@((int)Math.Round(p.Rotation))"
+                                               @oninput="e => SetPlacementRotation(p, e)" />
+                                        <span class="placement-scale">@((int)Math.Round(p.Rotation))°</span>
+                                    </div>
+                                    <div class="placement-align">
+                                        <button class="placement-reset" title="align left on visible pixels (l)"
+                                                disabled="@(!p.Included)" @onclick="() => { AlignLeft(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 2C3.22386 2 3 2.22386 3 2.5V17.5C3 17.7761 3.22386 18 3.5 18C3.77614 18 4 17.7761 4 17.5V2.5C4 2.22386 3.77614 2 3.5 2ZM7 11C5.89543 11 5 11.8954 5 13L5 14C5 15.1046 5.89543 16 7 16H12C13.1046 16 14 15.1046 14 14V13C14 11.8954 13.1046 11 12 11H7ZM6 13C6 12.4477 6.44772 12 7 12H12C12.5523 12 13 12.4477 13 13V14C13 14.5523 12.5523 15 12 15H7C6.44772 15 6 14.5523 6 14L6 13ZM5 6C5 4.89543 5.89543 4 7 4L15 4C16.1046 4 17 4.89543 17 6V7C17 8.10457 16.1046 9 15 9L7 9C5.89543 9 5 8.10457 5 7L5 6ZM7 5C6.44772 5 6 5.44772 6 6L6 7C6 7.55228 6.44772 8 7 8L15 8C15.5523 8 16 7.55228 16 7V6C16 5.44771 15.5523 5 15 5L7 5Z" fill="currentColor"/></svg></button>
+                                        <button class="placement-reset" title="center horizontally on visible pixels (c)"
+                                                disabled="@(!p.Included)" @onclick="() => { CenterHorizontally(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.5 18C10.2239 18 10 17.7761 10 17.5V16H8C6.89543 16 6 15.1046 6 14V13C6 11.8954 6.89543 11 8 11H10V9H6C4.89543 9 4 8.10457 4 7V6C4 4.89543 4.89543 4 6 4H10V2.5C10 2.22386 10.2239 2 10.5 2C10.7761 2 11 2.22386 11 2.5V4H15C16.1046 4 17 4.89543 17 6V7C17 8.10457 16.1046 9 15 9H11V11H13C14.1046 11 15 11.8954 15 13V14C15 15.1046 14.1046 16 13 16H11V17.5C11 17.7761 10.7761 18 10.5 18ZM6 5C5.44771 5 5 5.44772 5 6V7C5 7.55228 5.44771 8 6 8H15C15.5523 8 16 7.55228 16 7V6C16 5.44772 15.5523 5 15 5H6ZM8 12C7.44772 12 7 12.4477 7 13V14C7 14.5523 7.44772 15 8 15H13C13.5523 15 14 14.5523 14 14V13C14 12.4477 13.5523 12 13 12H8Z" fill="currentColor"/></svg></button>
+                                        <button class="placement-reset" title="align right on visible pixels (r)"
+                                                disabled="@(!p.Included)" @onclick="() => { AlignRight(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16.5 2C16.7761 2 17 2.22386 17 2.5V17.5C17 17.7761 16.7761 18 16.5 18C16.2239 18 16 17.7761 16 17.5V2.5C16 2.22386 16.2239 2 16.5 2ZM13 11C14.1046 11 15 11.8954 15 13V14C15 15.1046 14.1046 16 13 16H8C6.89543 16 6 15.1046 6 14V13C6 11.8954 6.89543 11 8 11H13ZM14 13C14 12.4477 13.5523 12 13 12H8C7.44771 12 7 12.4477 7 13V14C7 14.5523 7.44771 15 8 15H13C13.5523 15 14 14.5523 14 14V13ZM15 6C15 4.89543 14.1046 4 13 4L5 4C3.89543 4 3 4.89543 3 6V7C3 8.10457 3.89543 9 5 9L13 9C14.1046 9 15 8.10457 15 7V6ZM13 5C13.5523 5 14 5.44772 14 6V7C14 7.55228 13.5523 8 13 8L5 8C4.44771 8 4 7.55228 4 7V6C4 5.44771 4.44772 5 5 5L13 5Z" fill="currentColor"/></svg></button>
+                                        <button class="placement-reset" title="align top on visible pixels (t)"
+                                                disabled="@(!p.Included)" @onclick="() => { AlignTop(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3.5C2 3.22386 2.22386 3 2.5 3H17.5C17.7761 3 18 3.22386 18 3.5C18 3.77614 17.7761 4 17.5 4H2.5C2.22386 4 2 3.77614 2 3.5ZM11 7C11 5.89543 11.8954 5 13 5L14 5C15.1046 5 16 5.89543 16 7V12C16 13.1046 15.1046 14 14 14H13C11.8954 14 11 13.1046 11 12V7ZM13 6C12.4477 6 12 6.44772 12 7V12C12 12.5523 12.4477 13 13 13H14C14.5523 13 15 12.5523 15 12V7C15 6.44772 14.5523 6 14 6L13 6ZM6 5C4.89543 5 4 5.89543 4 7L4 15C4 16.1046 4.89543 17 6 17H7C8.10457 17 9 16.1046 9 15L9 7C9 5.89543 8.10457 5 7 5L6 5ZM5 7C5 6.44772 5.44772 6 6 6L7 6C7.55228 6 8 6.44772 8 7L8 15C8 15.5523 7.55228 16 7 16H6C5.44771 16 5 15.5523 5 15L5 7Z" fill="currentColor"/></svg></button>
+                                        <button class="placement-reset" title="middle vertically on visible pixels (m)"
+                                                disabled="@(!p.Included)" @onclick="() => { CenterVertically(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 9.5C18 9.77614 17.7761 10 17.5 10H16V12C16 13.1046 15.1046 14 14 14H13C11.8954 14 11 13.1046 11 12V10H9V14C9 15.1046 8.10457 16 7 16H6C4.89543 16 4 15.1046 4 14V10H2.5C2.22386 10 2 9.77614 2 9.5C2 9.22386 2.22386 9 2.5 9H4V5C4 3.89543 4.89543 3 6 3H7C8.10457 3 9 3.89543 9 5V9H11V7C11 5.89543 11.8954 5 13 5H14C15.1046 5 16 5.89543 16 7V9H17.5C17.7761 9 18 9.22386 18 9.5ZM5 14C5 14.5523 5.44772 15 6 15H7C7.55228 15 8 14.5523 8 14V5C8 4.44772 7.55228 4 7 4H6C5.44772 4 5 4.44772 5 5V14ZM12 12C12 12.5523 12.4477 13 13 13H14C14.5523 13 15 12.5523 15 12V7C15 6.44772 14.5523 6 14 6H13C12.4477 6 12 6.44772 12 7V12Z" fill="currentColor"/></svg></button>
+                                        <button class="placement-reset" title="align bottom on visible pixels (b)"
+                                                disabled="@(!p.Included)" @onclick="() => { AlignBottom(p); State.SchedulePlacementSave(); }"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 16.5C2 16.7761 2.22386 17 2.5 17H17.5C17.7761 17 18 16.7761 18 16.5C18 16.2239 17.7761 16 17.5 16H2.5C2.22386 16 2 16.2239 2 16.5ZM11 13C11 14.1046 11.8954 15 13 15H14C15.1046 15 16 14.1046 16 13V8C16 6.89543 15.1046 6 14 6H13C11.8954 6 11 6.89543 11 8V13ZM13 14C12.4477 14 12 13.5523 12 13V8C12 7.44771 12.4477 7 13 7H14C14.5523 7 15 7.44771 15 8V13C15 13.5523 14.5523 14 14 14H13ZM6 15C4.89543 15 4 14.1046 4 13L4 5C4 3.89543 4.89543 3 6 3H7C8.10457 3 9 3.89543 9 5L9 13C9 14.1046 8.10457 15 7 15H6ZM5 13C5 13.5523 5.44772 14 6 14H7C7.55228 14 8 13.5523 8 13L8 5C8 4.44771 7.55228 4 7 4H6C5.44771 4 5 4.44772 5 5L5 13Z" fill="currentColor"/></svg></button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+    }
+</div>
+
+@code {
+    private const int PreviewEncodeMaxWidth = 1600;
+
+    // Placement stage size in px — the CSS var --stage and the pointer math share this
+    // field, so drags stay exact at any zoom.
+    private double _placementPx = 240;
+    private bool _placementHelpOpen;
+
+    private string _newGroupName = "";
+    private bool _newGroupOpen;
+    private bool _ctaMenuOpen;
+    private int _activeBlock;
+    private bool _showPrompt;
+    private (double X, double Y)? _dragStart;
+    private RevisionRegion? _dragRegion;
+    private SlicePlacement? _placementDrag;
+    private SlicePlacement? _placementFocus;
+    private (double X, double Y) _placementPointerStart;
+    private (double X, double Y) _placementOffsetStart;
+    private readonly Dictionary<SlicePlacement, ElementReference> _stageRefs = [];
+    private bool _scaleHeld;
+
+    private void PlacementKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key == "s")
+        {
+            _scaleHeld = false;
+        }
+        State.SchedulePlacementSave();
+    }
+
+    private static string PlacementStyle(SlicePlacement p) =>
+        FormattableString.Invariant(
+            $"left:{p.OffsetX * 100:0.###}%; top:{p.OffsetY * 100:0.###}%; width:{p.Scale * 100:0.###}%; height:{p.Scale * 100:0.###}%; transform:rotate({p.Rotation:0.#}deg)");
+
+    private string PlacementLabel(SlicePlacement p)
+    {
+        var purpose = State.GetMeta(p.TileKey).Purpose;
+        return purpose.Length > 0 ? purpose : State.FramePurposePlaceholder(p.TileKey);
+    }
+
+    private void PlacementDown(SlicePlacement p, PointerEventArgs e)
+    {
+        _placementFocus = p;
+        if (!p.Included)
+        {
+            return;
+        }
+        _placementDrag = p;
+        _placementPointerStart = (e.ClientX, e.ClientY);
+        _placementOffsetStart = (p.OffsetX, p.OffsetY);
+    }
+
+    private void PlacementMove(SlicePlacement p, PointerEventArgs e)
+    {
+        if (_placementDrag != p)
+        {
+            return;
+        }
+        p.OffsetX = _placementOffsetStart.X + (e.ClientX - _placementPointerStart.X) / _placementPx;
+        p.OffsetY = _placementOffsetStart.Y + (e.ClientY - _placementPointerStart.Y) / _placementPx;
+    }
+
+    private void PlacementUp() => _placementDrag = null;
+
+    private void SetPlacementScale(SlicePlacement p, ChangeEventArgs e)
+    {
+        if (!int.TryParse((string?)e.Value, out var percent))
+        {
+            return;
+        }
+        var scale = Math.Clamp(percent / 100.0, 0.1, 2.5);
+        // Pivot the zoom on the art's center so the slider doesn't walk it away.
+        p.OffsetX += (p.Scale - scale) * p.AnchorX;
+        p.OffsetY += (p.Scale - scale) * p.AnchorY;
+        p.Scale = scale;
+        State.SchedulePlacementSave();
+    }
+
+    private void ResetPlacement(SlicePlacement p)
+    {
+        p.Scale = p.Auto.Scale;
+        p.OffsetX = p.Auto.OffsetX;
+        p.OffsetY = p.Auto.OffsetY;
+        p.Rotation = p.Auto.Rotation;
+    }
+
+    private void SetPlacementRotation(SlicePlacement p, ChangeEventArgs e)
+    {
+        if (int.TryParse((string?)e.Value, out var degrees))
+        {
+            p.Rotation = Math.Clamp(degrees, -180, 180);
+        }
+        State.SchedulePlacementSave();
+    }
+
+    /// <summary>AABB of the art's significant-bounds rect in cell space, carried through
+    /// scale and the rotation about the placed rect's center — the box the alignment
+    /// commands aim.</summary>
+    private static (double MinX, double MinY, double MaxX, double MaxY) VisibleAabb(SlicePlacement p)
+    {
+        var rad = p.Rotation * Math.PI / 180.0;
+        var cos = Math.Cos(rad);
+        var sin = Math.Sin(rad);
+        var pivotX = p.OffsetX + p.Scale / 2;
+        var pivotY = p.OffsetY + p.Scale / 2;
+        double minX = double.MaxValue, minY = double.MaxValue;
+        double maxX = double.MinValue, maxY = double.MinValue;
+        foreach (var (bx, by) in new[]
+                 {
+                     (p.BoundsX, p.BoundsY),
+                     (p.BoundsX + p.BoundsW, p.BoundsY),
+                     (p.BoundsX, p.BoundsY + p.BoundsH),
+                     (p.BoundsX + p.BoundsW, p.BoundsY + p.BoundsH),
+                 })
+        {
+            var cx = p.OffsetX + p.Scale * bx;
+            var cy = p.OffsetY + p.Scale * by;
+            var rx = pivotX + (cx - pivotX) * cos - (cy - pivotY) * sin;
+            var ry = pivotY + (cx - pivotX) * sin + (cy - pivotY) * cos;
+            minX = Math.Min(minX, rx);
+            maxX = Math.Max(maxX, rx);
+            minY = Math.Min(minY, ry);
+            maxY = Math.Max(maxY, ry);
+        }
+        return (minX, minY, maxX, maxY);
+    }
+
+    private static void AlignLeft(SlicePlacement p) => p.OffsetX -= VisibleAabb(p).MinX;
+    private static void AlignRight(SlicePlacement p) => p.OffsetX += 1 - VisibleAabb(p).MaxX;
+    private static void AlignTop(SlicePlacement p) => p.OffsetY -= VisibleAabb(p).MinY;
+    private static void AlignBottom(SlicePlacement p) => p.OffsetY += 1 - VisibleAabb(p).MaxY;
+
+    /// <summary>The significant-bounds CENTER carried through scale and rotation — the
+    /// point the centering commands pin to the cell's middle (edges use the AABB).</summary>
+    private static (double X, double Y) RotatedAnchor(SlicePlacement p)
+    {
+        var rad = p.Rotation * Math.PI / 180.0;
+        var relX = p.Scale * (p.AnchorX - 0.5);
+        var relY = p.Scale * (p.AnchorY - 0.5);
+        var pivotX = p.OffsetX + p.Scale / 2;
+        var pivotY = p.OffsetY + p.Scale / 2;
+        return (pivotX + relX * Math.Cos(rad) - relY * Math.Sin(rad),
+                pivotY + relX * Math.Sin(rad) + relY * Math.Cos(rad));
+    }
+
+    private static void CenterHorizontally(SlicePlacement p) =>
+        p.OffsetX += 0.5 - RotatedAnchor(p).X;
+
+    private static void CenterVertically(SlicePlacement p) =>
+        p.OffsetY += 0.5 - RotatedAnchor(p).Y;
+
+
+    /// <summary>Snap the new art onto the currently applied redraw's significant bounds —
+    /// the fastest way to keep a frame registered with an already-approved take.</summary>
+    private void MatchApplied(SlicePlacement p)
+    {
+        var applied = State.GetRedraw(p.TileKey);
+        if (applied is null ||
+            SpriteFootprint.SignificantBounds(applied) is not { } target)
+        {
+            return;
+        }
+        var placement = SpriteFootprint.PlacementIntoBox(p.Keyed, target);
+        p.Scale = placement.Scale;
+        p.OffsetX = placement.OffsetX;
+        p.OffsetY = placement.OffsetY;
+    }
+
+    private async Task PlacementKey(SlicePlacement p, KeyboardEventArgs e)
+    {
+        if (e.Key == "Tab")
+        {
+            var sprites = State.ActiveJob?.Placements?.Where(x => x.IsSprite).ToList();
+            if (sprites is { Count: > 0 })
+            {
+                var index = sprites.IndexOf(p);
+                var next = sprites[((index < 0 ? 0 : index) + (e.ShiftKey ? -1 : 1) +
+                                    sprites.Count) % sprites.Count];
+                _placementFocus = next;
+                if (_stageRefs.TryGetValue(next, out var stage))
+                {
+                    await stage.FocusAsync();
+                }
+            }
+            return;
+        }
+        if (!p.Included)
+        {
+            return;
+        }
+        var step = (e.ShiftKey ? 8.0 : 1.0) / 512.0;
+        var scaleStep = e.ShiftKey ? 0.05 : 0.01;
+        switch (e.Key)
+        {
+            case "s": _scaleHeld = true; break;
+            case "ArrowLeft":
+                if (_scaleHeld) { NudgeScale(p, -scaleStep); } else { p.OffsetX -= step; }
+                break;
+            case "ArrowRight":
+                if (_scaleHeld) { NudgeScale(p, +scaleStep); } else { p.OffsetX += step; }
+                break;
+            case "ArrowUp": p.OffsetY -= step; break;
+            case "ArrowDown": p.OffsetY += step; break;
+            case "[": NudgeScale(p, -0.01); break;
+            case "]": NudgeScale(p, +0.01); break;
+            case ",": p.Rotation = Math.Clamp(p.Rotation - (e.ShiftKey ? 15 : 1), -180, 180); break;
+            case ".": p.Rotation = Math.Clamp(p.Rotation + (e.ShiftKey ? 15 : 1), -180, 180); break;
+            case "0": ResetPlacement(p); break;
+            case "a": MatchApplied(p); break;
+            case "c": CenterHorizontally(p); break;
+            case "m": CenterVertically(p); break;
+            case "l": AlignLeft(p); break;
+            case "r": AlignRight(p); break;
+            case "t": AlignTop(p); break;
+            case "b": AlignBottom(p); break;
+        }
+    }
+
+    private void NudgeScale(SlicePlacement p, double delta)
+    {
+        var scale = Math.Clamp(p.Scale + delta, 0.1, 2.5);
+        p.OffsetX += (p.Scale - scale) * p.AnchorX;
+        p.OffsetY += (p.Scale - scale) * p.AnchorY;
+        p.Scale = scale;
+    }
+
+    protected override void OnInitialized() => State.OnChange += StateHasChanged;
+
+    public void Dispose() => State.OnChange -= StateHasChanged;
+
+    private void OnGroupSelected(ChangeEventArgs e)
+    {
+        var index = int.Parse((string)e.Value!);
+        State.ActiveGroup = index >= 0 && index < State.Project.Groups.Count
+            ? State.Project.Groups[index]
+            : null;
+        _platterSel.Clear();
+        _platterAnchor = -1;
+        State.Notify();
+    }
+
+    private void CreateGroupFromMenu()
+    {
+        if (!string.IsNullOrWhiteSpace(_newGroupName))
+        {
+            State.AddGroup(_newGroupName.Trim());
+            _newGroupName = "";
+            _newGroupOpen = false;
+        }
+    }
+
+    private void OnNewGroupKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            CreateGroupFromMenu();
+        }
+        else if (e.Key == "Escape")
+        {
+            _newGroupOpen = false;
+        }
+    }
+
+    private void DropOn(TileGroup group, int index)
+    {
+        _dropTarget = null;
+        var dropped = DragPayload.Keys;
+        DragPayload.Keys = [];
+        // Derived darks are engine-generated from their lights; they never go on sheets.
+        var keys = dropped.Where(k => !State.IsDerivedDark(k)).ToList();
+        if (keys.Count == 0)
+        {
+            if (dropped.Count > 0)
+            {
+                State.Fail("Derived-dark frames are excluded from sheets — they're generated " +
+                           "from their light sources.");
+            }
+            return;
+        }
+        // Keys already in the group move to the drop position instead of duplicating.
+        foreach (var key in keys)
+        {
+            var existing = group.TileKeys.IndexOf(key);
+            if (existing >= 0)
+            {
+                group.TileKeys.RemoveAt(existing);
+                if (existing < index)
+                {
+                    index--;
+                }
+            }
+        }
+        group.TileKeys.InsertRange(Math.Clamp(index, 0, group.TileKeys.Count), keys);
+        ClearPlatterSelection(group);
+        State.Notify();
+    }
+
+    private void Remove(TileGroup group, int index)
+    {
+        group.TileKeys.RemoveAt(index);
+        ClearPlatterSelection(group);
+        State.Notify();
+    }
+
+    // ---- Platter cell selection & seamless runs ----
+
+    private readonly HashSet<int> _platterSel = [];
+    private int _platterAnchor = -1;
+
+    private static string Pct(double v, double canvas) =>
+        FormattableString.Invariant($"{100 * v / canvas:0.###}%");
+
+    /// <summary>Reorders and removals shift indexes, so the selection can't survive them;
+    /// runs broken by the mutation dissolve too.</summary>
+    private void ClearPlatterSelection(TileGroup group)
+    {
+        _platterSel.Clear();
+        _platterAnchor = -1;
+        StudioState.ValidateRuns(group);
+    }
+
+    /// <summary>A merged run acts as one selectable item — clicking any member selects the
+    /// whole run's index block.</summary>
+    private List<int> RunIndexes(TileGroup group, int index)
+    {
+        var run = StudioState.RunContaining(group, group.TileKeys[index]);
+        if (run is null)
+        {
+            return [index];
+        }
+        var start = group.TileKeys.IndexOf(run[0]);
+        return start < 0 ? [index] : Enumerable.Range(start, run.Count).ToList();
+    }
+
+    private void CellClick(TileGroup group, int index, MouseEventArgs e)
+    {
+        var multi = e.CtrlKey || e.MetaKey;
+        if (e.ShiftKey && _platterAnchor >= 0 && _platterAnchor < group.TileKeys.Count)
+        {
+            if (!multi)
+            {
+                _platterSel.Clear();
+            }
+            var lo = Math.Min(_platterAnchor, index);
+            var hi = Math.Max(_platterAnchor, index);
+            for (var i = lo; i <= hi; i++)
+            {
+                _platterSel.Add(i);
+            }
+        }
+        else if (multi)
+        {
+            var block = RunIndexes(group, index);
+            if (block.All(_platterSel.Contains))
+            {
+                _platterSel.ExceptWith(block);
+            }
+            else
+            {
+                _platterSel.UnionWith(block);
+            }
+            _platterAnchor = index;
+        }
+        else
+        {
+            var block = RunIndexes(group, index);
+            if (_platterSel.SetEquals(block))
+            {
+                // Clicking the sole selected cell/run again deselects it.
+                _platterSel.Clear();
+                _platterAnchor = -1;
+                return;
+            }
+            _platterSel.Clear();
+            _platterSel.UnionWith(block);
+            _platterAnchor = index;
+        }
+        // Partial run selections grow to whole runs so a run always behaves as one item.
+        foreach (var i in _platterSel.ToList())
+        {
+            _platterSel.UnionWith(RunIndexes(group, i));
+        }
+    }
+
+    /// <summary>The run whose index block exactly equals the current selection, if any —
+    /// that's when the Seamless button shows ticked.</summary>
+    private List<string>? SelectedRun(TileGroup group)
+    {
+        if (_platterSel.Count < 2 || _platterSel.Any(i => i >= group.TileKeys.Count))
+        {
+            return null;
+        }
+        var run = StudioState.RunContaining(group, group.TileKeys[_platterSel.Min()]);
+        if (run is null)
+        {
+            return null;
+        }
+        var start = group.TileKeys.IndexOf(run[0]);
+        return start >= 0 && _platterSel.SetEquals(Enumerable.Range(start, run.Count))
+            ? run
+            : null;
+    }
+
+    /// <summary>2+ cells selected, contiguous in platter order — eligible to merge. A
+    /// selection that swallows existing runs is fine; merging absorbs them.</summary>
+    private bool MergeableSelection(TileGroup group)
+    {
+        if (_platterSel.Count < 2 || _platterSel.Any(i => i >= group.TileKeys.Count))
+        {
+            return false;
+        }
+        return _platterSel.Max() - _platterSel.Min() + 1 == _platterSel.Count;
+    }
+
+    private void ToggleSeamless(TileGroup group)
+    {
+        if (SelectedRun(group) is { } run)
+        {
+            group.SeamlessRuns.Remove(run);
+        }
+        else if (MergeableSelection(group))
+        {
+            var keys = _platterSel.OrderBy(i => i).Select(i => group.TileKeys[i]).ToList();
+            group.SeamlessRuns.RemoveAll(r => r.Any(keys.Contains));
+            group.SeamlessRuns.Add(keys);
+        }
+        StudioState.ValidateRuns(group);
+        State.Notify();
+    }
+
+    /// <summary>Menu-item import: the InputFile must stay nested in the visible label (the
+    /// hidden-input + label-for trick doesn't survive the menu's lifecycle), so the menu
+    /// closes here once a file is actually chosen.</summary>
+    private async Task OnImportCtaSelected(InputFileChangeEventArgs e)
+    {
+        _ctaMenuOpen = false;
+        await OnImportSelected(e);
+    }
+
+    private async Task OnImportSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            await State.CreateImportJobAsync(buffer.ToArray());
+        }
+        catch (Exception ex)
+        {
+            State.Fail($"Import failed: {ex.Message}");
+        }
+    }
+
+    private async Task CopyPromptAsync(string prompt)
+    {
+        await JS.InvokeVoidAsync("studioInterop.copyText", prompt);
+        State.Notify();
+    }
+
+    private Task Generate() => State.StartGenerationJobAsync(State.BuildPrompt());
+
+    private void SetQuality(string level)
+    {
+        // Picking the drawer's own level re-follows the setting (so drawer changes
+        // propagate); any other pick pins an explicit per-run override.
+        State.ThinkingOverride =
+            level.Length > 0 && level == State.Project.Generation.ThinkingLevel
+                ? null
+                : level;
+        State.Notify();
+    }
+
+    // Fluent cellular-data icons: more bars = more thinking. Named by bar count; the
+    // source files count the other way (cellular_data_5 = 1 bar).
+    private static readonly RenderFragment IconBars1 = @<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.75037 12C5.12711 12 5.439 12.2776 5.4926 12.6395L5.50073 12.7504V15.2528C5.50073 15.6673 5.16478 16.0032 4.75037 16.0032C4.37362 16.0032 4.06173 15.7256 4.00814 15.3637L4 15.2528V12.7504C4 12.336 4.33595 12 4.75037 12Z" fill="currentColor"/></svg>;
+    private static readonly RenderFragment IconBars2 = @<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 12C5.12656 12 5.4383 12.2775 5.49187 12.6392L5.5 12.75V15.25C5.5 15.6642 5.16421 16 4.75 16C4.37344 16 4.0617 15.7225 4.00813 15.3608L4 15.25V12.75C4 12.3358 4.33579 12 4.75 12ZM7.75 10C8.12656 10 8.4383 10.2775 8.49187 10.6392L8.5 10.75V15.25C8.5 15.6642 8.16421 16 7.75 16C7.37344 16 7.0617 15.7225 7.00813 15.3608L7 15.25V10.75C7 10.3358 7.33579 10 7.75 10Z" fill="currentColor"/></svg>;
+    private static readonly RenderFragment IconBars3 = @<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 12C5.12656 12 5.4383 12.2775 5.49187 12.6392L5.5 12.75V15.2456C5.5 15.6598 5.16421 15.9956 4.75 15.9956C4.37344 15.9956 4.0617 15.7181 4.00813 15.3564L4 15.2456V12.75C4 12.3358 4.33579 12 4.75 12ZM7.75 10C8.12656 10 8.4383 10.2775 8.49187 10.6392L8.5 10.75V15.2456C8.5 15.6598 8.16421 15.9956 7.75 15.9956C7.37344 15.9956 7.0617 15.7181 7.00813 15.3564L7 15.2456V10.75C7 10.3358 7.33579 10 7.75 10ZM10.75 8C11.1266 8 11.4383 8.27751 11.4919 8.63917L11.5 8.75V15.25C11.5 15.6642 11.1642 16 10.75 16C10.3734 16 10.0617 15.7225 10.0081 15.3608L10 15.25V8.75C10 8.33579 10.3358 8 10.75 8Z" fill="currentColor"/></svg>;
+    private static readonly RenderFragment IconBars4 = @<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.74976 12C5.1262 12 5.43784 12.2774 5.49139 12.639L5.49952 12.7498V15.2451C5.49952 15.6592 5.16384 15.9949 4.74976 15.9949C4.37332 15.9949 4.06168 15.7174 4.00813 15.3559L4 15.2451V12.7498C4 12.3357 4.33568 12 4.74976 12ZM7.74976 10C8.1262 10 8.43784 10.2774 8.49139 10.639L8.49952 10.7498V15.2451C8.49952 15.6592 8.16384 15.9949 7.74976 15.9949C7.37332 15.9949 7.06168 15.7174 7.00813 15.3559L7 15.2451V10.7498C7 10.3357 7.33568 10 7.74976 10ZM10.7498 8C11.1262 8 11.4378 8.27742 11.4914 8.63896L11.4995 8.74976V15.2502C11.4995 15.6643 11.1638 16 10.7498 16C10.3733 16 10.0617 15.7226 10.0081 15.361L10 15.2502V8.74976C10 8.33568 10.3357 8 10.7498 8ZM13.7498 6C14.1262 6 14.4378 6.27742 14.4914 6.63897L14.4995 6.74976V15.2502C14.4995 15.6643 14.1638 16 13.7498 16C13.3733 16 13.0617 15.7226 13.0081 15.361L13 15.2502V6.74976C13 6.33568 13.3357 6 13.7498 6Z" fill="currentColor"/></svg>;
+    private static readonly RenderFragment IconBars5 = @<svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 12.0001C5.12656 12.0001 5.4383 12.2776 5.49187 12.6393L5.5 12.7501V15.2501C5.5 15.6643 5.16421 16.0001 4.75 16.0001C4.37344 16.0001 4.0617 15.7226 4.00813 15.3609L4 15.2501V12.7501C4 12.3359 4.33579 12.0001 4.75 12.0001ZM7.75 10.0001C8.12656 10.0001 8.4383 10.2776 8.49187 10.6393L8.5 10.7501V15.2501C8.5 15.6643 8.16421 16.0001 7.75 16.0001C7.37344 16.0001 7.0617 15.7226 7.00813 15.3609L7 15.2501V10.7501C7 10.3359 7.33579 10.0001 7.75 10.0001ZM10.75 8.0001C11.1266 8.0001 11.4383 8.27761 11.4919 8.63927L11.5 8.7501V15.2501C11.5 15.6643 11.1642 16.0001 10.75 16.0001C10.3734 16.0001 10.0617 15.7226 10.0081 15.3609L10 15.2501V8.7501C10 8.33588 10.3358 8.0001 10.75 8.0001ZM13.75 6.0001C14.1266 6.0001 14.4383 6.27761 14.4919 6.63927L14.5 6.7501V15.2488C14.5 15.663 14.1642 15.9988 13.75 15.9988C13.3734 15.9988 13.0617 15.7213 13.0081 15.3596L13 15.2488V6.7501C13 6.33588 13.3358 6.0001 13.75 6.0001ZM16.75 4.00003C17.1229 3.99661 17.4344 4.26825 17.4909 4.62563L17.5 4.73523L17.4856 15.2506C17.4896 15.6605 17.1602 15.996 16.75 16.0001C16.3771 16.0036 16.0656 15.7319 16.0091 15.3746L16 15.265L16.0144 4.74963C16.0104 4.33973 16.3398 4.00421 16.75 4.00003Z" fill="currentColor"/></svg>;
+    // The tick-in-a-circle badge from Fluent's star_checkmark, overlaid at its native
+    // position; the ring paints the segment background so the badge reads over the bars.
+    private static readonly RenderFragment QualityBadge = @<svg class="seg-badge" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><circle class="badge-ring" cx="14.5" cy="14.5" r="5.6"/><path d="M19 14.5C19 16.9853 16.9853 19 14.5 19C12.0147 19 10 16.9853 10 14.5C10 12.0147 12.0147 10 14.5 10C16.9853 10 19 12.0147 19 14.5ZM16.8536 12.6464C16.6583 12.4512 16.3417 12.4512 16.1464 12.6464L13.5 15.2929L12.8536 14.6464C12.6583 14.4512 12.3417 14.4512 12.1464 14.6464C11.9512 14.8417 11.9512 15.1583 12.1464 15.3536L13.1464 16.3536C13.3417 16.5488 13.6583 16.5488 13.8536 16.3536L16.8536 13.3536C17.0488 13.1583 17.0488 12.8417 16.8536 12.6464Z" fill="currentColor"/></svg>;
+
+    private static RenderFragment QualityIcon(string level) => level switch
+    {
+        "minimal" => IconBars1,
+        "low" => IconBars2,
+        "medium" => IconBars3,
+        "high" => IconBars4,
+        _ => IconBars5, // extra-high, if a future model ever offers it
+    };
+
+    // ---- Group prompt auto-sizing (3–10 lines, manual resize respected) ----
+
+    private ElementReference _promptRef;
+    private TileGroup? _promptSizedFor;
+
+    private void OnPromptInput()
+    {
+        State.Notify();
+        _ = JS.InvokeVoidAsync("studioInterop.autoSizePrompt", _promptRef, false).AsTask();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (State.ActiveJob is not null)
+        {
+            // Re-size when the grid tab next shows.
+            _promptSizedFor = null;
+            return;
+        }
+        if (State.ActiveGroup is { } promptGroup && !ReferenceEquals(promptGroup, _promptSizedFor))
+        {
+            _promptSizedFor = promptGroup;
+            await JS.InvokeVoidAsync("studioInterop.autoSizePrompt", _promptRef, true);
+        }
+    }
+
+    // ---- Platter sorting & drag/drop ----
+
+    private bool _sortAsc = true;
+
+    /// <summary>Sort the platter by frame id (walls first, then sprites, by index);
+    /// alternate presses flip the direction. Runs that stay contiguous survive.</summary>
+    private void SortCells(TileGroup group)
+    {
+        var sorted = group.TileKeys
+            .OrderBy(k => TileRef.Parse(k).Kind)
+            .ThenBy(k => TileRef.Parse(k).Index)
+            .ToList();
+        if (!_sortAsc)
+        {
+            sorted.Reverse();
+        }
+        _sortAsc = !_sortAsc;
+        group.TileKeys.Clear();
+        group.TileKeys.AddRange(sorted);
+        ClearPlatterSelection(group);
+        State.Notify();
+    }
+
+    private int? _dropTarget;
+
+    /// <summary>Dragging a selected cell carries the whole selection; dragging a run member
+    /// carries the whole run — blocks move as one and stay contiguous after the drop.</summary>
+    private List<string> DragKeysFor(TileGroup group, int index)
+    {
+        var indexes = _platterSel.Contains(index) && _platterSel.Count > 1
+            ? _platterSel.OrderBy(i => i).ToList()
+            : RunIndexes(group, index);
+        return indexes.Where(i => i < group.TileKeys.Count)
+            .Select(i => group.TileKeys[i]).ToList();
+    }
+
+    private void ToggleApprovedRefKey(TileGroup group, string key)
+    {
+        if (!group.ApprovedRefExcluded.Remove(key))
+        {
+            group.ApprovedRefExcluded.Add(key);
+        }
+        State.Notify();
+    }
+
+
+    private async Task OnCharacterRefSelected(InputFileChangeEventArgs e)
+    {
+        if (State.ActiveGroup is null)
+        {
+            return;
+        }
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            await State.SetCharacterRefAsync(State.ActiveGroup, buffer.ToArray());
+        }
+        catch (Exception ex)
+        {
+            State.Fail($"Character reference failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Add the next-colour revision set (Red → Blue → Green → Amber) and make it
+    /// the active marking target.</summary>
+    private void AddRevisionSet(GenerationJob job)
+    {
+        var used = job.Blocks.Select(b => b.ColorIndex).ToHashSet();
+        var next = Enumerable.Range(0, 4).Where(i => !used.Contains(i)).DefaultIfEmpty(-1).First();
+        if (next < 0)
+        {
+            return;
+        }
+        job.Blocks.Add(new RevisionBlock(next));
+        _activeBlock = next;
+        State.Notify();
+    }
+
+    private void RemoveRevisionSet(GenerationJob job, RevisionBlock set)
+    {
+        job.Blocks.Remove(set);
+        if (_activeBlock == set.ColorIndex)
+        {
+            _activeBlock = job.Blocks.OrderBy(b => b.ColorIndex)
+                .Select(b => b.ColorIndex).DefaultIfEmpty(-1).First();
+        }
+        State.Notify();
+    }
+
+    // ---- Region marking (pointer mapped through the MEASURED rendered rect, so the math
+    // is exact regardless of how the responsive canvas is currently sized) ----
+
+    private ElementReference _canvasRef;
+    private CanvasRect? _dragRect;
+
+    private sealed record CanvasRect(double Left, double Top, double Width, double Height);
+
+    private async Task PointerDown(PointerEventArgs e)
+    {
+        // Marking targets the active revision set — no set, no drag.
+        if (State.ActiveJob is not { } markJob ||
+            markJob.Blocks.All(b => b.ColorIndex != _activeBlock))
+        {
+            return;
+        }
+        _dragRect = await JS.InvokeAsync<CanvasRect>("studioInterop.getRect", _canvasRef);
+        _dragStart = (e.ClientX, e.ClientY);
+        _dragRegion = null;
+    }
+
+    private void PointerMove(PointerEventArgs e, GenerationJob job)
+    {
+        if (_dragStart is not { } start || _dragRect is not { Width: > 0 } rect)
+        {
+            return;
+        }
+        var scale = job.SheetWidth / rect.Width;
+        double Cx(double clientX) => Math.Clamp(clientX - rect.Left, 0, rect.Width) * scale;
+        double Cy(double clientY) => Math.Clamp(clientY - rect.Top, 0, rect.Height) * scale;
+        var x0 = Math.Min(Cx(start.X), Cx(e.ClientX));
+        var y0 = Math.Min(Cy(start.Y), Cy(e.ClientY));
+        var w = Math.Abs(Cx(e.ClientX) - Cx(start.X));
+        var h = Math.Abs(Cy(e.ClientY) - Cy(start.Y));
+        _dragRegion = new RevisionRegion((int)x0, (int)y0, Math.Max(1, (int)w), Math.Max(1, (int)h));
+        StateHasChanged();
+    }
+
+    private void PointerUp(GenerationJob job)
+    {
+        // Sets are created only via ＋ — a drag with no active set is discarded.
+        if (_dragRegion is { Width: > 8, Height: > 8 } region &&
+            job.Blocks.FirstOrDefault(b => b.ColorIndex == _activeBlock) is { } block)
+        {
+            block.Regions.Add(region);
+        }
+        _dragStart = null;
+        _dragRegion = null;
+        _dragRect = null;
+        State.Notify();
+    }
+
+    /// <summary>Overlay boxes are positioned in percentages of the image, so they stay
+    /// aligned at any rendered size.</summary>
+    private static string RegionStyle(RevisionRegion region, GenerationJob job) =>
+        $"left:{100.0 * region.X / job.SheetWidth:F3}%; top:{100.0 * region.Y / job.SheetHeight:F3}%; " +
+        $"width:{100.0 * region.Width / job.SheetWidth:F3}%; height:{100.0 * region.Height / job.SheetHeight:F3}%;";
+
+    private static string ShortKey(string key) => key.Replace("wall:", "w").Replace("sprite:", "s");
+}

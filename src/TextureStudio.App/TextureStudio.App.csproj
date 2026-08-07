@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+
+  <!-- Native relink: 1 GB initial / 4 GB max heap + SIMD. Requires the wasm-tools workload
+       (sudo dotnet workload install wasm-tools), then build with -p:WasmNative=true.
+       Kept opt-in so plain dev builds work without the workload. -->
+  <PropertyGroup Condition="'$(WasmNative)' == 'true'">
+    <WasmBuildNative>true</WasmBuildNative>
+    <WasmEnableSIMD>true</WasmEnableSIMD>
+    <EmccInitialHeapSize>1073741824</EmccInitialHeapSize>
+    <EmccMaximumHeapSize>4294967296</EmccMaximumHeapSize>
+  </PropertyGroup>
+
+  <!-- AOT-compile for release publishes (also needs wasm-tools): much faster pixel loops. -->
+  <PropertyGroup Condition="'$(WasmNative)' == 'true' and '$(Configuration)' == 'Release'">
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="11.0.0-preview.5.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="11.0.0-preview.5.*" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.14.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TextureStudio.Core\TextureStudio.Core.csproj" />
+  </ItemGroup>
+
+</Project>

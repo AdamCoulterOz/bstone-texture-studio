@@ -1,0 +1,958 @@
+@page "/"
+@implements IDisposable
+@inject StudioState State
+@inject ImageCodec Codec
+@inject GeminiImageClient Gemini
+@inject IJSRuntime JS
+
+<PageTitle>BStone Texture Studio</PageTitle>
+
+<div class="topbar">
+    <span class="brand">BStone Texture Studio</span>
+    <span class="topbar-spacer"></span>
+    <div class="seg view-seg" title="which art the item grid and platter display">
+        <button class="seg-btn @(!State.ShowRedraw ? "active" : "")" title="show source art"
+                @onclick="() => SetShowRedraw(false)">
+            <span class="seg-icon"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 3.00031C15.6569 3.00031 17 4.34345 17 6.00031V14.0003C16.9998 15.657 15.6568 17.0003 14 17.0003H6C4.34324 17.0003 3.00015 15.657 3 14.0003V11.0003H4V14.0003C4.00005 14.3728 4.10188 14.7222 4.2793 15.0208L8.94824 10.4319C9.53183 9.85851 10.4682 9.85851 11.0518 10.4319L15.7207 15.0208C15.8981 14.7222 15.9999 14.3728 16 14.0003V6.00031C16 4.89574 15.1046 4.00031 14 4.00031H10.8926L10.9121 3.92706C10.9955 3.61577 11.0145 3.30229 10.9805 3.00031H14ZM10.3506 11.1458C10.1561 10.9547 9.84394 10.9547 9.64941 11.1458L4.98828 15.7259C5.28506 15.9002 5.63091 16.0003 6 16.0003H14C14.3691 16.0003 14.7149 15.9002 15.0117 15.7259L10.3506 11.1458ZM5.5 3.00031C6.32843 3.00031 7 3.67188 7 4.50031V8.50031C6.99985 9.3286 6.32833 10.0003 5.5 10.0003H2.5C1.67167 10.0003 1.00015 9.3286 1 8.50031V4.50031C1 3.67188 1.67157 3.00031 2.5 3.00031H5.5ZM12.5 6.00031C13.3284 6.00031 14 6.67188 14 7.50031C13.9998 8.3286 13.3283 9.00031 12.5 9.00031C11.6717 9.00031 11.0002 8.3286 11 7.50031C11 6.67188 11.6716 6.00031 12.5 6.00031ZM4.18652 2.00031C4.44553 1.27046 5.22539 0.850353 5.98633 1.05402L8.88477 1.83038C9.68482 2.0449 10.1597 2.86816 9.94531 3.66827L8.91016 7.53156C8.78081 8.01394 8.4293 8.37619 7.99609 8.5423C7.99632 8.52841 7.99899 8.51425 7.99902 8.50031V4.50031C7.99902 4.02509 7.86557 3.58117 7.63379 3.20343C7.19508 2.48277 6.40433 2.0004 5.49902 2.00031H4.18652ZM12.5 7.00031C12.2239 7.00031 12 7.22416 12 7.50031C12.0002 7.77632 12.224 8.00031 12.5 8.00031C12.776 8.00031 12.9998 7.77632 13 7.50031C13 7.22416 12.7761 7.00031 12.5 7.00031Z" fill="currentColor"/></svg></span>
+        </button>
+        <button class="seg-btn @(State.ShowRedraw ? "active" : "")" title="show redrawn art"
+                @onclick="() => SetShowRedraw(true)">
+            <span class="seg-icon"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.12226 0.282251L4.77398 1.35305C4.66568 1.67859 4.48288 1.97441 4.24012 2.21699C3.99735 2.45957 3.70131 2.64223 3.37552 2.75044L2.3039 3.09845L2.28247 3.10381C2.19987 3.13292 2.12835 3.18692 2.07776 3.25836C2.02717 3.3298 2 3.41516 2 3.50268C2 3.5902 2.02717 3.67556 2.07776 3.747C2.12835 3.81844 2.19987 3.87244 2.28247 3.90155L3.35409 4.24956C3.67988 4.35778 3.97592 4.54044 4.21869 4.78302C4.46145 5.0256 4.64425 5.32141 4.75255 5.64696L5.10082 6.71775C5.12996 6.80029 5.184 6.87175 5.2555 6.92231C5.32699 6.97286 5.41242 7.00001 5.5 7.00001C5.58758 7.00001 5.67301 6.97286 5.7445 6.92231C5.75156 6.91732 5.75843 6.91213 5.76514 6.90675C5.82641 6.85755 5.87291 6.79215 5.89918 6.71775L6.24745 5.64696C6.26617 5.59014 6.28716 5.53422 6.31034 5.47932C6.42037 5.21872 6.57977 4.98116 6.78032 4.77999C6.81846 4.74173 6.85792 4.70496 6.89861 4.66973C7.11698 4.48064 7.37081 4.33588 7.64592 4.24421L8.71753 3.8962C8.80013 3.86708 8.87165 3.81308 8.92224 3.74164C8.97283 3.6702 9 3.58484 9 3.49733C9 3.40981 8.97283 3.32445 8.92224 3.25301C8.87165 3.18157 8.80013 3.12757 8.71753 3.09845L7.64592 2.75044C7.32409 2.63941 7.03232 2.45549 6.79344 2.21307C6.55456 1.97065 6.37503 1.67631 6.26889 1.35305L5.92061 0.282251C5.89147 0.19972 5.83743 0.128252 5.76594 0.0776997C5.69444 0.0271473 5.60902 0 5.52143 0C5.43385 0 5.34842 0.0271473 5.27693 0.0776997C5.20543 0.128252 5.15139 0.19972 5.12226 0.282251ZM0.217072 8.21319L0.982513 7.96461C1.21522 7.88731 1.42668 7.75684 1.60008 7.58357C1.77349 7.4103 1.90406 7.199 1.98141 6.96647L2.23018 6.20161C2.25099 6.14266 2.2896 6.09161 2.34066 6.05551C2.39173 6.0194 2.45275 6.00001 2.51531 6.00001C2.57787 6.00001 2.63889 6.0194 2.68996 6.05551C2.74102 6.09161 2.77962 6.14266 2.80044 6.20161L3.0492 6.96647C3.12502 7.19737 3.25325 7.40762 3.42389 7.58077C3.59452 7.75392 3.80292 7.8853 4.0328 7.96461L4.79824 8.21319C4.85723 8.23398 4.90832 8.27255 4.94446 8.32358C4.98059 8.37461 5 8.43558 5 8.4981C5 8.56061 4.98059 8.62158 4.94446 8.67261C4.90832 8.72364 4.85723 8.76221 4.79824 8.78301L4.0328 9.03158C3.79968 9.10926 3.58795 9.24032 3.41452 9.41428C3.24109 9.58824 3.11074 9.80031 3.0339 10.0335L2.78513 10.7984C2.76431 10.8574 2.72571 10.9084 2.67465 10.9445C2.62358 10.9806 2.56256 11 2.5 11C2.43744 11 2.37642 10.9806 2.32535 10.9445C2.27429 10.9084 2.23569 10.8574 2.21487 10.7984L1.9661 10.0335C1.88875 9.80101 1.75818 9.58972 1.58478 9.41645C1.41137 9.24317 1.19991 9.11271 0.967204 9.03541L0.201763 8.78683C0.142767 8.76603 0.0916796 8.72746 0.0555429 8.67643C0.0194063 8.62541 0 8.56443 0 8.50192C0 8.43941 0.0194063 8.37844 0.0555429 8.32741C0.0916796 8.27638 0.142767 8.23781 0.201763 8.21701L0.217072 8.21319ZM3 14V11.9009C3.08531 11.8659 3.16702 11.8221 3.24386 11.7696C3.46406 11.6094 3.6242 11.399 3.72429 11.1486L3.98453 10.3473C3.9894 10.3343 3.99452 10.3213 4 10.3084V14C4 14.3726 4.10191 14.7215 4.27937 15.0201L8.94868 10.432C9.53227 9.85859 10.4677 9.85859 11.0513 10.432L15.7206 15.0201C15.8981 14.7215 16 14.3726 16 14V6C16 4.89543 15.1046 4 14 4H9.9091C9.96903 3.84162 10 3.67231 10 3.49611C10 3.32279 9.97003 3.15614 9.91202 3H14C15.6569 3 17 4.34315 17 6V14C17 15.6569 15.6569 17 14 17H6C4.34315 17 3 15.6569 3 14ZM14 7.5C14 8.32843 13.3284 9 12.5 9C11.6716 9 11 8.32843 11 7.5C11 6.67157 11.6716 6 12.5 6C13.3284 6 14 6.67157 14 7.5ZM13 7.5C13 7.22386 12.7761 7 12.5 7C12.2239 7 12 7.22386 12 7.5C12 7.77614 12.2239 8 12.5 8C12.7761 8 13 7.77614 13 7.5ZM14 16C14.3692 16 14.7149 15.9 15.0118 15.7256L10.3504 11.1453C10.1559 10.9542 9.84409 10.9542 9.64956 11.1453L4.98824 15.7256C5.28505 15.9 5.63085 16 6 16H14Z" fill="currentColor"/></svg></span>
+        </button>
+    </div>
+    <div class="settings-wrap">
+        <button class="@(_settingsOpen || _drawer != Drawer.None ? "active" : "")"
+                @onclick="() => _settingsOpen = !_settingsOpen">Settings <IconChevron Dir="down" Size="14" /></button>
+        @if (_settingsOpen)
+        {
+            <div class="menu-backdrop" @onclick="() => _settingsOpen = false"></div>
+            <div class="settings-menu">
+                <button @onclick="() => OpenDrawerFromMenu(Drawer.Model)">Model API</button>
+                <button @onclick="() => OpenDrawerFromMenu(Drawer.Style)">Style</button>
+                <button @onclick="() => OpenDrawerFromMenu(Drawer.Generation)">Generation</button>
+                <button @onclick="() => OpenDrawerFromMenu(Drawer.Application)">Application</button>
+            </div>
+        }
+    </div>
+</div>
+
+@if (_styleRefLightbox is { } lightboxRef)
+{
+    var refList = State.Project.Generation.StyleRefs;
+    var refIndex = refList.IndexOf(lightboxRef);
+    <StudioLightbox Title="Style reference"
+                    Hint="@($"image {refIndex + 1}/{refList.Count}")"
+                    ImageUrl="@State.StyleRefFullUrl(lightboxRef)"
+                    OnClose="() => _styleRefLightbox = null"
+                    OnPrev="() => StepStyleRefLightbox(-1)"
+                    OnNext="() => StepStyleRefLightbox(+1)">
+        <LeftContent>
+            <label>Context
+                <textarea rows="8" placeholder="context — how should the model use this image?"
+                          value="@lightboxRef.Context"
+                          @onchange="e => { lightboxRef.Context = (string?)e.Value ?? string.Empty; State.Notify(); }"></textarea>
+            </label>
+        </LeftContent>
+        <ImageOverlay>
+            <label class="file-button lightbox-swap" title="replace this image, keeping its context and position">
+                Swap
+                <InputFile OnChange="e => OnStyleRefSwapSelected(lightboxRef, e)" />
+            </label>
+        </ImageOverlay>
+    </StudioLightbox>
+}
+
+@if (_drawer != Drawer.None)
+{
+    <div class="drawer-backdrop" @onclick="CloseDrawer"></div>
+    <div class="drawer">
+        <div class="drawer-header">
+            <strong>@(_drawer switch { Drawer.Model => "Model API", Drawer.Style => "Style", Drawer.Application => "Application", _ => "Generation" })</strong>
+            <button class="close-btn" @onclick="CloseDrawer"><IconDismiss Size="13" /></button>
+        </div>
+        @if (_drawer == Drawer.Model)
+        {
+            <div class="drawer-body">
+        <label>Gemini API key <input type="password" @bind="State.ApiKey" placeholder="saved to workspace" /></label>
+        <label class="wide">Model
+            <span class="model-row">
+                <select value="@State.Project.Generation.ModelId" @onchange="OnModelChanged">
+                    @foreach (var model in ModelOptions())
+                    {
+                        <option value="@model">@model</option>
+                    }
+                </select>
+                <button class="icon-btn" title="refresh the model list from the API"
+                        disabled="@(string.IsNullOrWhiteSpace(State.ApiKey))" @onclick="RefreshModels">
+                    <svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 10C4 6.68629 6.68629 4 10 4C11.7766 4 13.3732 4.77191 14.4723 6H12.5C12.2239 6 12 6.22386 12 6.5C12 6.77614 12.2239 7 12.5 7H15.5C15.7761 7 16 6.77614 16 6.5V3.5C16 3.22386 15.7761 3 15.5 3C15.2239 3 15 3.22386 15 3.5V5.10109C13.7299 3.80499 11.9591 3 10 3C6.13401 3 3 6.13401 3 10C3 13.866 6.13401 17 10 17C13.866 17 17 13.866 17 10C17 9.8191 16.9931 9.6397 16.9796 9.46207C16.9587 9.18673 16.7185 8.98049 16.4431 9.00144C16.1678 9.02239 15.9615 9.26258 15.9825 9.53793C15.9941 9.69034 16 9.84443 16 10C16 13.3137 13.3137 16 10 16C6.68629 16 4 13.3137 4 10Z" fill="currentColor"/></svg>
+                </button>
+            </span>
+        </label>
+        @if (StudioState.ThinkingLevelsFor(State.Project.Generation.ModelId) is { Length: > 0 } levels)
+        {
+            <label title="model reasoning effort — higher can improve layout/instruction compliance at some latency/cost">Effort
+                <select value="@ResolvedDrawerThinking" @onchange="OnThinkingSettingChanged">
+                    @foreach (var level in levels)
+                    {
+                        <option value="@level">@level@(level == StudioState.DefaultThinkingFor(State.Project.Generation.ModelId) ? " (default)" : "")</option>
+                    }
+                </select>
+            </label>
+        }
+        else
+        {
+            <span class="hint">this model has no thinking control</span>
+        }
+        <div class="inline-selects wide">
+            <label title="each Generate click produces this many versions, generated one after another (in series) with different top-p values">Versions per generate
+                <select @bind="State.Project.Generation.VersionCount" @bind:after="State.Notify">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                </select>
+            </label>
+            <label title="how many jobs may call the API at once — 1 runs everything in series (rate-limit friendly); takes effect for jobs started after the change">Max concurrent jobs
+                <select @bind="State.Project.Generation.MaxConcurrentJobs" @bind:after="State.Notify">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </label>
+        </div>
+        <span class="hint">output size is computed per sheet from its cell grid and tile px</span>
+            </div>
+        }
+        else if (_drawer == Drawer.Style)
+        {
+            <div class="drawer-body">
+        <label class="wide" title='injected into every generation prompt as "Style Description: …"'>Description
+            <textarea rows="4" @bind="State.Project.Generation.StylePrompt"
+                      @bind:event="oninput" @bind:after="State.Notify"></textarea>
+        </label>
+        <div class="wide">
+            <div class="ref-header">
+                <strong title="attached in order after the sheet; each context is quoted against its image index in the prompt">Reference images</strong>
+                <label class="file-button ref-add" title="add reference images">
+                    <IconAdd Size="14" />
+                    <InputFile OnChange="OnStyleRefsSelected" multiple />
+                </label>
+                <button class="@(_styleRefEdit ? "active" : "")"
+                        @onclick="() => _styleRefEdit = !_styleRefEdit">@(_styleRefEdit ? "Done" : "Edit")</button>
+            </div>
+            @foreach (var (reference, refIndex) in State.Project.Generation.StyleRefs.Select((r, i) => (r, i)))
+            {
+                var styleRef = reference;
+                var dropIndex = refIndex;
+                <div class="style-ref-row @(_styleDropIndex == dropIndex && _dragStyleRef is not null ? "drop-indicator" : "")"
+                     @ondragover:preventDefault
+                     @ondragover="() => StyleRefDragOver(dropIndex)"
+                     @ondrop="() => DropStyleRef(dropIndex)">
+                    @if (_styleRefEdit)
+                    {
+                        <span class="drag-handle" title="drag to reorder" draggable="true"
+                              @ondragstart="() => _dragStyleRef = styleRef"
+                              @ondragend="ResetStyleRefDrag">☰</span>
+                    }
+                    <div class="style-ref-thumb-wrap @(_styleRefEdit ? "" : "clickable")"
+                         @onclick="() => { if (!_styleRefEdit) { _styleRefLightbox = styleRef; } }">
+                        <img class="style-ref-thumb" src="@State.StyleRefUrl(styleRef)" alt="style reference" />
+                        @if (_styleRefEdit)
+                        {
+                            <label class="file-button style-ref-swap" title="replace this image, keeping its context and position"
+                                   @onclick:stopPropagation>
+                                swap
+                                <InputFile OnChange="e => OnStyleRefSwapSelected(styleRef, e)" />
+                            </label>
+                        }
+                    </div>
+                    <textarea class="style-ref-context" rows="3"
+                              placeholder="context — how should the model use this image?"
+                              value="@styleRef.Context"
+                              @onchange="e => { styleRef.Context = (string?)e.Value ?? string.Empty; State.Notify(); }"></textarea>
+                    @if (_styleRefEdit)
+                    {
+                        <span class="frame-remove" title="detach this reference"
+                              @onclick="() => State.RemoveStyleRef(styleRef)"><IconDismiss Size="11" /></span>
+                    }
+                </div>
+            }
+            @if (_styleRefEdit && State.Project.Generation.StyleRefs.Count > 0)
+            {
+                <div class="frame-drop-tail @(_styleDropIndex == State.Project.Generation.StyleRefs.Count && _dragStyleRef is not null ? "drop-indicator" : "")"
+                     @ondragover:preventDefault
+                     @ondragover="() => StyleRefDragOver(State.Project.Generation.StyleRefs.Count)"
+                     @ondrop="() => DropStyleRef(State.Project.Generation.StyleRefs.Count)">drop here to move to end</div>
+            }
+        </div>
+            </div>
+        }
+        else if (_drawer == Drawer.Application)
+        {
+            <div class="drawer-body">
+        <span class="wide"><strong class="ref-heading">Notifications</strong></span>
+        <span class="hint wide">Choose which notification banners appear at the top of the
+            main pane. Hidden kinds still show in the jobs list and statuses.</span>
+        <div class="notif-filter">
+            <button class="@(_notifFilterOpen ? "active" : "")"
+                    @onclick="() => _notifFilterOpen = !_notifFilterOpen">
+                Shown notifications <IconChevron Dir="@(_notifFilterOpen ? "up" : "down")" Size="14" /></button>
+            @if (_notifFilterOpen)
+            {
+                <div class="notif-list">
+                    @foreach (var kind in StudioState.NotificationKinds)
+                    {
+                        var notifKind = kind;
+                        <label class="toggle notif-row">
+                            <input type="checkbox"
+                                   checked="@(!State.Project.Ui.HiddenNotifications.Contains(notifKind))"
+                                   @onchange="() => State.ToggleNotificationKind(notifKind)" />
+                            @(notifKind switch
+                            {
+                                "Errors" => "Errors & warnings",
+                                "Jobs" => "Job updates",
+                                "Progress" => "Progress",
+                                "Workspace" => "Workspace",
+                                _ => "General info",
+                            })
+                        </label>
+                    }
+                </div>
+            }
+        </div>
+            </div>
+        }
+        else
+        {
+            <div class="drawer-body dark-panel">
+            <span class="wide"><strong class="ref-heading">Sprite Size (pixels)</strong></span>
+            <span class="hint wide">If 1:1, no scaling will be applied, otherwise the generated
+                image will be scaled up or down to the target size. Both persist with the project.</span>
+            <div class="inline-selects wide">
+                <span class="field-col">
+                    <label title="cell size composed into outgoing generation sheets">Generated
+                        <select @bind="State.Project.Generation.TilePx" @bind:after="State.Notify">
+                            <option value="128">128</option>
+                            <option value="192">192</option>
+                            <option value="256">256</option>
+                            <option value="512">512</option>
+                        </select>
+                    </label>
+                    <span class="hint">what the model paints each cell at — the sheet's output
+                        size is computed per group from its cell grid</span>
+                </span>
+                <span class="field-col">
+                    <label title="resolution each cell is cut back to when slicing results">Target
+                        <select @bind="State.SliceTargetPx" @bind:after="State.Notify">
+                            <option value="256">256</option>
+                            <option value="512">512</option>
+                            <option value="1024">1024</option>
+                        </select>
+                    </label>
+                    <span class="hint">what each cell becomes in the workspace after slicing</span>
+                </span>
+            </div>
+            <span class="wide"><strong class="ref-heading">Dark variants</strong></span>
+            <span class="hint wide">Adjust the sliders until each pair matches as closely as
+                possible — left is the light original darkened live, right is the true 1993 dark.</span>
+            <label>multiply @State.Project.DarkParams.Multiply.ToString("F2")
+                <input type="range" min="0.30" max="1.00" step="0.01"
+                       value="@State.Project.DarkParams.Multiply"
+                       @oninput="e => SetDark(m: double.Parse((string)e.Value!))" />
+            </label>
+            <label>gamma @State.Project.DarkParams.Gamma.ToString("F2")
+                <input type="range" min="0.70" max="1.40" step="0.01"
+                       value="@State.Project.DarkParams.Gamma"
+                       @oninput="e => SetDark(g: double.Parse((string)e.Value!))" />
+            </label>
+            <label>saturation @State.Project.DarkParams.Saturation.ToString("F2")
+                <input type="range" min="0.50" max="1.30" step="0.01"
+                       value="@State.Project.DarkParams.Saturation"
+                       @oninput="e => SetDark(s: double.Parse((string)e.Value!))" />
+            </label>
+            @if (_darkPairs.Count > 0)
+            {
+                <div class="pair-strip wide">
+                    @foreach (var pair in _darkPairs)
+                    {
+                        <span class="pair">
+                            <img src="@pair.GenUrl" alt="generated dark" title="light original, darkened live" />
+                            <img src="@pair.RefUrl" alt="original dark" title="original 1993 dark" />
+                        </span>
+                    }
+                </div>
+            }
+            else
+            {
+                <span class="hint wide">no native light/dark pairs available — load a VSWAP first</span>
+            }
+            <span class="wide"><strong class="ref-heading">Lighten dark variants</strong></span>
+            <span class="hint wide">Alternate Dark originals are brightened with this transform
+                before entering generation sheets, so the model redraws them as light art (dark
+                inputs tend to come back as noise); the result is re-darkened for display and
+                packing by the Dark variants transform above. Match each lightened dark (left)
+                to its light sibling (right).</span>
+            <label>multiply @State.Project.LightenParams.Multiply.ToString("F2")
+                <input type="range" min="1.00" max="2.50" step="0.01"
+                       value="@State.Project.LightenParams.Multiply"
+                       @oninput="e => SetLighten(m: double.Parse((string)e.Value!))" />
+            </label>
+            <label>gamma @State.Project.LightenParams.Gamma.ToString("F2")
+                <input type="range" min="0.50" max="1.20" step="0.01"
+                       value="@State.Project.LightenParams.Gamma"
+                       @oninput="e => SetLighten(g: double.Parse((string)e.Value!))" />
+            </label>
+            <label>saturation @State.Project.LightenParams.Saturation.ToString("F2")
+                <input type="range" min="0.60" max="1.40" step="0.01"
+                       value="@State.Project.LightenParams.Saturation"
+                       @oninput="e => SetLighten(s: double.Parse((string)e.Value!))" />
+            </label>
+            @if (_lightenPairs.Count > 0)
+            {
+                <div class="pair-strip wide">
+                    @foreach (var pair in _lightenPairs)
+                    {
+                        <span class="pair">
+                            <img src="@pair.GenUrl" alt="lightened dark" title="dark original, lightened live" />
+                            <img src="@pair.RefUrl" alt="light sibling" title="its light sibling" />
+                        </span>
+                    }
+                </div>
+            }
+            else
+            {
+                <span class="hint wide">no Alternate Dark pairs available — load a VSWAP first</span>
+            }
+            </div>
+        }
+    </div>
+}
+
+<div class="studio-body"
+     @onpointermove="OnSplitterMove" @onpointerup="EndSplitterDrag" @onpointerleave="EndSplitterDrag">
+    @if (_collapsed[0])
+    {
+        <div class="sidebar-strip" title="expand the Items sidebar" @onclick="ToggleSidebar">
+            <span class="chevron"><IconChevron Dir="right" Size="14" /></span>
+            <span class="strip-label">Items</span>
+        </div>
+    }
+    else
+    {
+        <div class="sidebar" style="width:@(_sidebarWidth)px">
+            <div class="side-section grow">
+                <h5>
+                    <span class="collapse-ctl" title="collapse the sidebar"
+                          @onclick="ToggleSidebar"><span class="chevron"><IconChevron Dir="down" Size="14" /></span></span>
+                    Items
+                    <span class="size-controls" @onclick:stopPropagation>
+                        @if (SelectedWallCount() >= 2)
+                        {
+                            <button title="pair the selected walls as light/dark variants"
+                                    @onclick="State.AutoPairWalls">Auto-pair</button>
+                        }
+                        <label class="file-button import-btn @(State.Workspace.IsOpen ? "" : "disabled")"
+                               title="@(State.Workspace.IsOpen ? "import the game's graphics: choose VSWAP.BS6 (Aliens of Gold) or VSWAP.VSI (Planet Strike)" : "open a workspace first")">
+                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 4C17.7761 4 18 4.22386 18 4.5V15.5C18 15.7761 17.7761 16 17.5 16C17.2239 16 17 15.7761 17 15.5V4.5C17 4.22386 17.2239 4 17.5 4ZM2 10C2 9.72386 2.22386 9.5 2.5 9.5H13.2929L10.1464 6.35355C9.95118 6.15829 9.95118 5.84171 10.1464 5.64645C10.3417 5.45118 10.6583 5.45118 10.8536 5.64645L14.8536 9.64645C14.9015 9.69439 14.9377 9.74964 14.9621 9.80861C14.9861 9.86669 14.9996 9.9303 15 9.997L15 10L15 10.003C14.9992 10.13 14.9504 10.2567 14.8536 10.3536L10.8536 14.3536C10.6583 14.5488 10.3417 14.5488 10.1464 14.3536C9.95118 14.1583 9.95118 13.8417 10.1464 13.6464L13.2929 10.5H2.5C2.22386 10.5 2 10.2761 2 10Z" fill="currentColor"/></svg>
+                            <span class="btn-label">Import</span>
+                            <InputFile OnChange="OnVswapSelected" accept=".BS6,.VSI,.bs6,.vsi"
+                                       disabled="@(!State.Workspace.IsOpen)" />
+                        </label>
+                        <div class="seg zoom-seg">
+                            <button class="seg-btn" title="smaller previews" @onclick="() => BumpSize(0, -1)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 10C3 9.72386 3.22386 9.5 3.5 9.5H16.5C16.7761 9.5 17 9.72386 17 10C17 10.2761 16.7761 10.5 16.5 10.5H3.5C3.22386 10.5 3 10.2761 3 10Z" fill="currentColor"/></svg></button>
+                            <button class="seg-btn" title="larger previews" @onclick="() => BumpSize(0, 1)"><IconAdd Size="14" /></button>
+                        </div>
+                        <button class="@(PropsVisible ? "active" : "")"
+                                title="@(HasSelection ? "toggle the properties column" : "select an item first")"
+                                disabled="@(!HasSelection)"
+                                @onclick="TogglePropsColumn"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.75 3H14.25C15.7688 3 17 4.23122 17 5.75V9.59971C16.6832 9.43777 16.3486 9.30564 16 9.20703V5.75C16 4.7835 15.2165 4 14.25 4H5.75C4.7835 4 4 4.7835 4 5.75V14.25C4 15.2165 4.7835 16 5.75 16H9.20703C9.30564 16.3486 9.43777 16.6832 9.59971 17H5.75C4.23122 17 3 15.7688 3 14.25V5.75C3 4.23122 4.23122 3 5.75 3ZM9.5 10H11.3369C10.9338 10.2839 10.5705 10.6206 10.2572 11H9.5C9.22386 11 9 10.7761 9 10.5C9 10.2239 9.22386 10 9.5 10ZM6.75 8C7.16421 8 7.5 7.66421 7.5 7.25C7.5 6.83579 7.16421 6.5 6.75 6.5C6.33579 6.5 6 6.83579 6 7.25C6 7.66421 6.33579 8 6.75 8ZM7.5 10.25C7.5 10.6642 7.16421 11 6.75 11C6.33579 11 6 10.6642 6 10.25C6 9.83579 6.33579 9.5 6.75 9.5C7.16421 9.5 7.5 9.83579 7.5 10.25ZM7.5 13.25C7.5 13.6642 7.16421 14 6.75 14C6.33579 14 6 13.6642 6 13.25C6 12.8358 6.33579 12.5 6.75 12.5C7.16421 12.5 7.5 12.8358 7.5 13.25ZM9 7.5C9 7.22386 9.22386 7 9.5 7H13.5C13.7761 7 14 7.22386 14 7.5C14 7.77614 13.7761 8 13.5 8H9.5C9.22386 8 9 7.77614 9 7.5ZM12.0657 11.4421C12.369 12.5232 11.723 13.6421 10.6351 13.92L10.174 14.0378C10.159 14.1898 10.1514 14.3439 10.1514 14.5C10.1514 14.6876 10.1625 14.8726 10.184 15.0542L10.5336 15.1369C11.653 15.4016 12.319 16.5537 11.9897 17.6558L11.8633 18.0786C12.1205 18.2819 12.4002 18.4561 12.698 18.5965L13.023 18.2524C13.8128 17.4161 15.1436 17.4168 15.9325 18.2539L16.2698 18.6119C16.5623 18.477 16.8376 18.3096 17.0917 18.1143L16.9356 17.5576C16.6323 16.4765 17.2783 15.3576 18.3662 15.0797L18.8268 14.962C18.8417 14.8101 18.8494 14.656 18.8494 14.5C18.8494 14.3122 18.8383 14.1271 18.8167 13.9454L18.4677 13.8628C17.3483 13.5982 16.6823 12.446 17.0116 11.3439L17.1378 10.9216C16.8806 10.7183 16.6008 10.544 16.303 10.4035L15.9783 10.7473C15.1885 11.5836 13.8577 11.5829 13.0688 10.7458L12.7314 10.3878C12.439 10.5227 12.1636 10.69 11.9095 10.8853L12.0657 11.4421ZM14.5004 15.5C13.9481 15.5 13.5004 15.0523 13.5004 14.5C13.5004 13.9477 13.9481 13.5 14.5004 13.5C15.0527 13.5 15.5004 13.9477 15.5004 14.5C15.5004 15.0523 15.0527 15.5 14.5004 15.5Z" fill="currentColor"/></svg><span class="btn-label">Properties</span></button>
+                    </span>
+                </h5>
+                <TileGridPane />
+            </div>
+        </div>
+        <div class="v-splitter" @onpointerdown="e => BeginSplitterDrag(SplitterKind.Sidebar, e)"></div>
+    }
+    @if (PropsVisible)
+    {
+        <div class="side-section props-column" style="width:@(_propsWidth)px">
+            <h5>
+                Properties
+                <span class="size-controls" @onclick:stopPropagation>
+                    <button class="@(State.FrameEditMode ? "active" : "")"
+                            title="@(State.FrameEditMode ? "finish editing frames" : "reorder or remove frames")"
+                            disabled="@(State.SelectedItem is null)"
+                            @onclick="() => { State.FrameEditMode = !State.FrameEditMode; State.Notify(); }">
+                        @(State.FrameEditMode ? "Done" : "Edit")
+                    </button>
+                    <div class="seg zoom-seg">
+                        <button class="seg-btn" title="smaller frames" @onclick="() => BumpSize(1, -1)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 10C3 9.72386 3.22386 9.5 3.5 9.5H16.5C16.7761 9.5 17 9.72386 17 10C17 10.2761 16.7761 10.5 16.5 10.5H3.5C3.22386 10.5 3 10.2761 3 10Z" fill="currentColor"/></svg></button>
+                        <button class="seg-btn" title="larger frames" @onclick="() => BumpSize(1, 1)"><IconAdd Size="14" /></button>
+                    </div>
+                    <button class="close-btn" title="close the properties column" @onclick="TogglePropsColumn"><IconDismiss /></button>
+                </span>
+            </h5>
+            <InspectorPane />
+        </div>
+        <div class="v-splitter" @onpointerdown="e => BeginSplitterDrag(SplitterKind.Props, e)"></div>
+    }
+    <div class="main-pane">
+        <GroupPane />
+    </div>
+</div>
+
+
+<div class="statusbar">
+    @if (State.Workspace.IsOpen)
+    {
+        <span class="ws-split" title="@(State.Workspace.WritesBlocked ? "connected read-only — writes refused by the browser" : "workspace folder")">
+            <span class="ws-name @(State.Workspace.WritesBlocked ? "blocked" : "")">
+                @(State.Workspace.WritesBlocked ? "⚠" : "📁") @State.Workspace.Name
+            </span>
+            <button class="ws-close close-btn" title="close workspace (flushes a final save)"
+                    @onclick="State.CloseWorkspaceAsync"><IconDismiss Size="11" /></button>
+        </span>
+    }
+    else
+    {
+        <button @onclick="State.OpenWorkspaceAsync">Open workspace…</button>
+        @if (_hasStoredWorkspace)
+        {
+            <button @onclick="() => State.ReconnectWorkspaceAsync(true)">Reconnect</button>
+        }
+    }
+    @if (State.Busy)
+    {
+        <FluentProgressRing Style="width:14px;height:14px" />
+    }
+    <span class="statusbar-spacer"></span>
+    @if (State.Jobs.Count > 0)
+    {
+        var inProgress = State.Jobs.Count(j => j.State is JobState.Queued or JobState.Running);
+        var attention = State.Jobs.Count(j => j.State is JobState.AwaitingReview or JobState.Placing);
+        var done = State.Jobs.Count(j => j.State == JobState.Done);
+        var failed = State.Jobs.Count(j => j.State == JobState.Failed);
+        var cancelled = State.Jobs.Count(j => j.State == JobState.Cancelled);
+        var interrupted = State.Jobs.Count(j => j.State == JobState.Interrupted);
+        <div class="jobs-wrap">
+            @if (_jobsOpen)
+            {
+                <div class="menu-backdrop" @onclick="() => _jobsOpen = false"></div>
+                <div class="jobs-popup" @onclick="() => _jobsOpen = false">
+                    <JobsPanel />
+                </div>
+            }
+            <button class="jobs-btn @(_jobsOpen ? "active" : "")"
+                    @onclick="() => _jobsOpen = !_jobsOpen">
+                @if (inProgress > 0)
+                {
+                    <FluentProgressRing Style="width:14px;height:14px" />
+                }
+                Jobs
+                @if (inProgress > 0)
+                {
+                    <span class="pill pill-progress" title="@inProgress in progress">@inProgress</span>
+                }
+                @if (attention > 0)
+                {
+                    <span class="pill pill-review" title="@attention awaiting you">@attention</span>
+                }
+                @if (done > 0)
+                {
+                    <span class="pill pill-done" title="@done completed">@done</span>
+                }
+                @if (failed > 0)
+                {
+                    <span class="pill pill-failed" title="@failed failed">@failed</span>
+                }
+                @if (cancelled > 0)
+                {
+                    <span class="pill pill-cancelled" title="@cancelled cancelled">@cancelled</span>
+                }
+                @if (interrupted > 0)
+                {
+                    <span class="pill pill-cancelled" title="@interrupted interrupted">@interrupted</span>
+                }
+            </button>
+        </div>
+    }
+</div>
+
+<JobToasts />
+
+@code {
+    private enum Drawer { None, Model, Style, Generation, Application }
+
+    private bool _styleRefEdit;
+    private bool _settingsOpen;
+    private StyleRefInfo? _styleRefLightbox;
+    private StyleRefInfo? _dragStyleRef;
+    private int? _styleDropIndex;
+
+    private void OpenDrawerFromMenu(Drawer drawer)
+    {
+        _settingsOpen = false;
+        ToggleDrawer(drawer);
+    }
+
+    private int SelectedWallCount() =>
+        State.SelectedItems
+            .SelectMany(i => i.TileKeys)
+            .Count(k => TileRef.Parse(k).Kind == TileKind.Wall);
+
+    private void StepStyleRefLightbox(int direction)
+    {
+        var refs = State.Project.Generation.StyleRefs;
+        if (_styleRefLightbox is null || refs.Count == 0)
+        {
+            return;
+        }
+        var index = Math.Max(0, refs.IndexOf(_styleRefLightbox));
+        _styleRefLightbox = refs[(index + direction + refs.Count) % refs.Count];
+    }
+
+    private void StyleRefDragOver(int index)
+    {
+        if (_dragStyleRef is not null && _styleDropIndex != index)
+        {
+            _styleDropIndex = index;
+        }
+    }
+
+    private void ResetStyleRefDrag()
+    {
+        _dragStyleRef = null;
+        _styleDropIndex = null;
+    }
+
+    private void DropStyleRef(int targetIndex)
+    {
+        if (_dragStyleRef is not { } dragged)
+        {
+            return;
+        }
+        ResetStyleRefDrag();
+        var refs = State.Project.Generation.StyleRefs;
+        var oldIndex = refs.IndexOf(dragged);
+        if (oldIndex < 0)
+        {
+            return;
+        }
+        refs.RemoveAt(oldIndex);
+        if (oldIndex < targetIndex)
+        {
+            targetIndex--;
+        }
+        refs.Insert(Math.Clamp(targetIndex, 0, refs.Count), dragged);
+        State.Notify();
+    }
+
+    private Drawer _drawer = Drawer.None;
+    private bool _hasStoredWorkspace;
+    private List<string> _models = [];
+    private DotNetObjectReference<Home>? _selfRef;
+
+    private static readonly string[] KnownImageModels =
+    [
+        "gemini-3-pro-image",
+        "gemini-3-pro-image-preview",
+        "gemini-3.1-flash-image",
+        "gemini-3.1-flash-image-preview",
+        "gemini-3.1-flash-lite-image",
+        "gemini-2.5-flash-image",
+    ];
+
+    /// <summary>Live model list when fetched, else the known roster — always including the
+    /// currently configured id so the select never loses its value.</summary>
+    private IEnumerable<string> ModelOptions() =>
+        (_models.Count > 0 ? _models : KnownImageModels.ToList())
+        .Append(State.Project.Generation.ModelId)
+        .Where(m => !string.IsNullOrWhiteSpace(m))
+        .Distinct()
+        .OrderBy(m => m);
+
+    /// <summary>What the drawer's thinking select displays: the explicit setting when one
+    /// is pinned, else the model's own default.</summary>
+    private string ResolvedDrawerThinking
+    {
+        get
+        {
+            var setting = State.Project.Generation.ThinkingLevel;
+            return setting.Length > 0 &&
+                   StudioState.ThinkingLevelsFor(State.Project.Generation.ModelId).Contains(setting)
+                ? setting
+                : StudioState.DefaultThinkingFor(State.Project.Generation.ModelId);
+        }
+    }
+
+    private void OnThinkingSettingChanged(ChangeEventArgs e)
+    {
+        var picked = (string?)e.Value ?? "";
+        // Picking the model's default level stores "follow default" so switching models
+        // keeps tracking each model's own default; any other pick pins that level.
+        State.Project.Generation.ThinkingLevel =
+            picked == StudioState.DefaultThinkingFor(State.Project.Generation.ModelId) ? "" : picked;
+        State.Notify();
+    }
+
+    private void OnModelChanged(ChangeEventArgs e)
+    {
+        State.Project.Generation.ModelId = (string?)e.Value ?? "";
+        // Drop a thinking level the new model doesn't support back to default.
+        if (!StudioState.ThinkingLevelsFor(State.Project.Generation.ModelId)
+                .Contains(State.Project.Generation.ThinkingLevel))
+        {
+            State.Project.Generation.ThinkingLevel = "";
+        }
+        State.Notify();
+    }
+
+    private void ToggleDrawer(Drawer drawer)
+    {
+        _drawer = _drawer == drawer ? Drawer.None : drawer;
+        if (_drawer == Drawer.None)
+        {
+            FlushSettings();
+        }
+        if (_drawer == Drawer.Generation)
+        {
+            _ = RefreshPairPreviewsAsync();
+        }
+        if (_drawer == Drawer.Model && _models.Count == 0 &&
+            !string.IsNullOrWhiteSpace(State.ApiKey))
+        {
+            _ = RefreshModels();
+        }
+    }
+
+    private void CloseDrawer()
+    {
+        _drawer = Drawer.None;
+        FlushSettings();
+    }
+
+    /// <summary>Write project.json immediately — drawer edits must survive an instant
+    /// reload, not wait out the auto-save debounce.</summary>
+    private void FlushSettings()
+    {
+        if (State.Workspace.IsOpen)
+        {
+            _ = State.SaveProjectToWorkspaceAsync();
+        }
+    }
+
+    private bool HasSelection => State.SelectedItems.Count > 0;
+
+    /// <summary>The Properties column is hidden entirely without a selection; with one it
+    /// follows the user's last open/closed choice.</summary>
+    private bool PropsVisible => HasSelection && !_collapsed[1];
+
+    private async Task ToggleSidebar()
+    {
+        _collapsed[0] = !_collapsed[0];
+        await PersistLayoutAsync();
+    }
+
+    private async Task TogglePropsColumn()
+    {
+        _collapsed[1] = !_collapsed[1];
+        await PersistLayoutAsync();
+    }
+
+    private async Task BumpSize(int which, int direction)
+    {
+        if (which == 0)
+        {
+            State.BumpItemTileSize(direction);
+        }
+        else
+        {
+            State.BumpFrameThumbSize(direction);
+        }
+        await PersistLayoutAsync();
+        State.Notify();
+    }
+
+    private void SetShowRedraw(bool value)
+    {
+        State.ShowRedraw = value;
+        State.Notify();
+    }
+
+    protected override void OnInitialized() => State.OnChange += OnStateChanged;
+
+    public void Dispose()
+    {
+        State.OnChange -= OnStateChanged;
+        _selfRef?.Dispose();
+    }
+
+    private void OnStateChanged()
+    {
+        if (_drawer == Drawer.Generation)
+        {
+            _ = RefreshPairPreviewsAsync();
+        }
+        StateHasChanged();
+    }
+
+    // ---- Dark / lighten variant tuning (lives in the Generation drawer) ----
+
+    private List<(string GenUrl, string RefUrl)> _darkPairs = [];
+    private List<(string GenUrl, string RefUrl)> _lightenPairs = [];
+    private string? _pairsStamp;
+
+    private void SetDark(double? m = null, double? g = null, double? s = null)
+    {
+        var p = State.Project.DarkParams;
+        State.Project.DarkParams = new DarkParams(m ?? p.Multiply, g ?? p.Gamma, s ?? p.Saturation);
+        State.InvalidateDerivedDarks();
+        _ = RefreshPairPreviewsAsync();
+    }
+
+    private void SetLighten(double? m = null, double? g = null, double? s = null)
+    {
+        var p = State.Project.LightenParams;
+        State.Project.LightenParams = new DarkParams(m ?? p.Multiply, g ?? p.Gamma, s ?? p.Saturation);
+        State.Notify();
+        _ = RefreshPairPreviewsAsync();
+    }
+
+    /// <summary>Up to 5 native light/dark pairs (dark transform live on the light) and up
+    /// to 5 AlternateDark pairs (lighten transform live on the dark) — RAW originals only.</summary>
+    private async Task RefreshPairPreviewsAsync()
+    {
+        if (State.Vswap is null)
+        {
+            _darkPairs = [];
+            _lightenPairs = [];
+            return;
+        }
+        var stamp = $"{State.Project.DarkParams}|{State.Project.LightenParams}";
+        if (stamp == _pairsStamp)
+        {
+            return;
+        }
+        _pairsStamp = stamp;
+        var dark = new List<(string GenUrl, string RefUrl)>();
+        var lighten = new List<(string GenUrl, string RefUrl)>();
+        foreach (var (key, meta) in State.Project.Meta)
+        {
+            try
+            {
+                var lightKey = meta.LightSourceKey ?? StudioState.DefaultLightSource(key);
+                if (lightKey is null)
+                {
+                    continue;
+                }
+                if (meta.Role == PairRole.DerivedDark && dark.Count < 5)
+                {
+                    dark.Add((
+                        await Codec.ToDataUrlAsync(DarkGenerator.Apply(
+                            State.GetOriginal(lightKey), State.Project.DarkParams)),
+                        await Codec.ToDataUrlAsync(State.GetOriginal(key))));
+                }
+                else if (meta.Role == PairRole.AlternateDark && lighten.Count < 5)
+                {
+                    lighten.Add((
+                        await Codec.ToDataUrlAsync(DarkGenerator.Apply(
+                            State.GetOriginal(key), State.Project.LightenParams)),
+                        await Codec.ToDataUrlAsync(State.GetOriginal(lightKey))));
+                }
+                if (dark.Count >= 5 && lighten.Count >= 5)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                // originals unavailable for this key — skip the pair
+            }
+        }
+        _darkPairs = dark;
+        _lightenPairs = lighten;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await Codec.RegisterPasteHandlerAsync(_selfRef);
+            await RestoreLayoutAsync();
+            _hasStoredWorkspace = await State.Workspace.HasStoredHandleAsync();
+            await State.ReconnectWorkspaceAsync(interactive: false);
+            StateHasChanged();
+        }
+    }
+
+    // ---- Resizable layout (persisted in localStorage) ----
+
+    private enum SplitterKind { None, Sidebar, Props }
+
+    private int _sidebarWidth = 360;
+    private int _propsWidth = 340;
+    private readonly bool[] _collapsed = new bool[2];
+    private bool _jobsOpen;
+    private bool _notifFilterOpen;
+    private SplitterKind _dragKind;
+
+    private (double X, double Y) _dragOrigin;
+    private int _dragStartValue;
+
+    private void BeginSplitterDrag(SplitterKind kind, PointerEventArgs e)
+    {
+        _dragKind = kind;
+        _dragOrigin = (e.ClientX, e.ClientY);
+        _dragStartValue = kind == SplitterKind.Sidebar ? _sidebarWidth : _propsWidth;
+    }
+
+    private void OnSplitterMove(PointerEventArgs e)
+    {
+        switch (_dragKind)
+        {
+            case SplitterKind.Sidebar:
+                _sidebarWidth = Math.Clamp(_dragStartValue + (int)(e.ClientX - _dragOrigin.X), 220, 900);
+                break;
+            case SplitterKind.Props:
+                _propsWidth = Math.Clamp(_dragStartValue + (int)(e.ClientX - _dragOrigin.X), 240, 700);
+                break;
+        }
+    }
+
+    private async Task EndSplitterDrag()
+    {
+        if (_dragKind == SplitterKind.None)
+        {
+            return;
+        }
+        _dragKind = SplitterKind.None;
+        await PersistLayoutAsync();
+    }
+
+    private async Task PersistLayoutAsync() =>
+        await JS.InvokeVoidAsync("localStorage.setItem", "studio-layout",
+            $"v2,{_sidebarWidth},{_propsWidth}," +
+            $"{(_collapsed[0] ? 1 : 0)},{(_collapsed[1] ? 1 : 0)}," +
+            $"{State.ItemColumns},{State.FrameThumbSize}");
+
+    private async Task RestoreLayoutAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", "studio-layout");
+            var parts = stored?.Split(',');
+            if (parts is { Length: >= 7 } && parts[0] == "v2")
+            {
+                if (int.TryParse(parts[1], out var w))
+                {
+                    _sidebarWidth = Math.Clamp(w, 220, 900);
+                }
+                if (int.TryParse(parts[2], out var pw))
+                {
+                    _propsWidth = Math.Clamp(pw, 240, 700);
+                }
+                _collapsed[0] = parts[3] == "1";
+                _collapsed[1] = parts[4] == "1";
+                if (int.TryParse(parts[5], out var itemSize) &&
+                    int.TryParse(parts[6], out var thumbSize))
+                {
+                    State.ItemColumns = itemSize is >= 2 and <= 12 ? itemSize : 5;
+                    State.FrameThumbSize = Math.Clamp(thumbSize, 24, 96);
+                }
+            }
+            else if (parts is { Length: >= 3 } && int.TryParse(parts[0], out var legacyW))
+            {
+                // Legacy v1 CSV: sidebar width + section heights/collapses + sizes.
+                _sidebarWidth = Math.Clamp(legacyW, 220, 900);
+                if (parts.Length >= 6)
+                {
+                    _collapsed[0] = parts[3] == "1";
+                    _collapsed[1] = parts[4] == "1";
+                }
+                if (parts.Length >= 8 &&
+                    int.TryParse(parts[6], out var itemSize) &&
+                    int.TryParse(parts[7], out var thumbSize))
+                {
+                    State.ItemColumns = itemSize is >= 2 and <= 12 ? itemSize : 5;
+                    State.FrameThumbSize = Math.Clamp(thumbSize, 24, 96);
+                }
+            }
+        }
+        catch
+        {
+            // defaults are fine
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnImagePasted(byte[] png) => await State.CreateImportJobAsync(png);
+
+    private async Task OnStyleRefSwapSelected(StyleRefInfo reference, InputFileChangeEventArgs e)
+    {
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            await State.SwapStyleRefAsync(reference, buffer.ToArray());
+        }
+        catch (Exception ex)
+        {
+            State.Fail($"Style reference swap failed: {ex.Message}");
+        }
+    }
+
+    private async Task OnStyleRefsSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(8))
+            {
+                using var stream = file.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                await State.AddStyleRefAsync(buffer.ToArray());
+            }
+        }
+        catch (Exception ex)
+        {
+            State.Fail($"Style reference load failed: {ex.Message}");
+        }
+    }
+
+    private async Task OnVswapSelected(InputFileChangeEventArgs e)
+    {
+        if (!State.Workspace.IsOpen)
+        {
+            State.Fail("Open a workspace first — everything you do is stored there.");
+            return;
+        }
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            State.LoadVswap(buffer.ToArray(), e.File.Name);
+        }
+        catch (Exception ex)
+        {
+            State.Fail($"VSWAP load failed: {ex.Message}");
+        }
+    }
+
+    private async Task RefreshModels()
+    {
+        try
+        {
+            _models = await Gemini.ListImageModelsAsync(State.ApiKey);
+        }
+        catch (Exception ex)
+        {
+            _models = [$"error: {ex.Message}"];
+        }
+    }
+}

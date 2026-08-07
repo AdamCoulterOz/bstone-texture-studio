@@ -1,0 +1,7 @@
+bin/
+obj/
+.DS_Store
+__pycache__/
+*.user
+.playwright-mcp/
+.vs/

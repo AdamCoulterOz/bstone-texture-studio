@@ -1,0 +1,158 @@
+@implements IDisposable
+@inject StudioState State
+@inject IJSRuntime JS
+
+<div class="pane grid-pane">
+    <div class="pane-header">
+        <div class="seg seg-text seg-fill kind-tabs">
+            <button class="seg-btn @(State.ItemsKind == TileKind.Wall ? "active" : "")"
+                    @onclick="() => SwitchKind(TileKind.Wall)">
+                Walls
+            </button>
+            <button class="seg-btn @(State.ItemsKind == TileKind.Sprite ? "active" : "")"
+                    @onclick="() => SwitchKind(TileKind.Sprite)">
+                Sprites
+            </button>
+        </div>
+        <select value="@State.CategoryFilter" @onchange="OnCategoryChanged">
+            <option value="">All categories</option>
+            @foreach (var category in State.UsedCategories(State.ItemsKind))
+            {
+                <option value="@category">@category</option>
+            }
+        </select>
+    </div>
+    <div class="item-grid" style="--cols:@State.ItemColumns" @onclick="() => State.SelectItem(null)">
+        @foreach (var item in VisibleItems())
+        {
+            var frameKey = FrameFor(item);
+            var url = State.GetItemArtUrl(frameKey);
+            var displayName = item.Name.Length > 0 ? item.Name : State.ItemNamePlaceholder(item);
+            <div class="item-cell @(State.SelectedItems.Contains(item) ? "selected" : "")"
+                 title="@displayName (@item.TileKeys.Count frames)"
+                 @onclick="e => OnItemClick(e, item)" @onclick:stopPropagation>
+                @if (url is { Length: > 0 })
+                {
+                    <img src="@url" alt="@displayName" draggable="true"
+                         @ondragstart="() => DragPayload.Keys = DragKeysFor(item)" />
+                }
+                else
+                {
+                    <div class="tile-placeholder"></div>
+                }
+                @if (item.TileKeys.Count > 1)
+                {
+                    <span class="badge frames">@item.TileKeys.Count</span>
+                }
+                @if (item.TileKeys.Any(State.HasRedraw))
+                {
+                    <span class="badge redraw" title="has redraws"></span>
+                }
+                <span class="item-name @(item.Name.Length == 0 ? "placeholder" : "")">@displayName</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Dragging an item that is part of a multi-selection carries the WHOLE
+    /// selection (in item order) — the drag replaces the old Add-selection button.</summary>
+    private List<string> DragKeysFor(TileItem item) =>
+        State.SelectedItems.Count > 1 && State.SelectedItems.Contains(item)
+            ? State.SelectedItems.SelectMany(i => i.TileKeys).Distinct().ToList()
+            : [.. item.TileKeys];
+
+    private int _animationTick;
+    private Timer? _timer;
+    private TileItem? _anchor;
+    private DotNetObjectReference<TileGridPane>? _selfRef;
+
+    protected override void OnInitialized()
+    {
+        State.OnChange += StateHasChanged;
+        _timer = new Timer(_ =>
+        {
+            _animationTick++;
+            if (VisibleItems().Any(i => i.IsAnimation && i.TileKeys.Count > 1))
+            {
+                _ = InvokeAsync(StateHasChanged);
+            }
+        }, null, 450, 450);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("studioInterop.registerSelectAllHandler", _selfRef);
+        }
+    }
+
+    public void Dispose()
+    {
+        State.OnChange -= StateHasChanged;
+        _timer?.Dispose();
+        _ = JS.InvokeVoidAsync("studioInterop.unregisterSelectAllHandler");
+        _selfRef?.Dispose();
+    }
+
+    /// <summary>Cmd/Ctrl+A: select every item visible under the current tab + category filter.</summary>
+    [JSInvokable]
+    public async Task OnSelectAll()
+    {
+        State.SelectItemRange(VisibleItems());
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnItemClick(MouseEventArgs e, TileItem item)
+    {
+        if (e.ShiftKey && _anchor is not null)
+        {
+            var visible = VisibleItems().ToList();
+            var anchorIndex = visible.IndexOf(_anchor);
+            var targetIndex = visible.IndexOf(item);
+            if (anchorIndex >= 0 && targetIndex >= 0)
+            {
+                var (lo, hi) = anchorIndex <= targetIndex
+                    ? (anchorIndex, targetIndex)
+                    : (targetIndex, anchorIndex);
+                State.SelectItemRange(visible.Skip(lo).Take(hi - lo + 1));
+                return; // anchor stays for repeated shift-clicks
+            }
+        }
+        State.SelectItem(item, e.MetaKey || e.CtrlKey);
+        _anchor = item;
+    }
+
+    private void OnCategoryChanged(ChangeEventArgs e)
+    {
+        State.CategoryFilter = (string?)e.Value ?? "";
+        State.SelectItem(null);
+    }
+
+    private void SwitchKind(TileKind kind)
+    {
+        if (State.ItemsKind == kind)
+        {
+            return;
+        }
+        State.ItemsKind = kind;
+        State.CategoryFilter = "";
+        if (State.SelectedItem is not null)
+        {
+            State.SelectItem(null);
+        }
+    }
+
+    private string FrameFor(TileItem item) =>
+        item.IsAnimation && item.TileKeys.Count > 1
+            ? item.TileKeys[_animationTick % item.TileKeys.Count]
+            : item.TileKeys[0];
+
+    private IEnumerable<TileItem> VisibleItems() =>
+        State.Project.Items.Where(item =>
+            item.TileKeys.Count > 0 &&
+            TileRef.Parse(item.TileKeys[0]).Kind == State.ItemsKind &&
+            (string.IsNullOrEmpty(State.CategoryFilter) || item.Category == State.CategoryFilter));
+}

@@ -1,0 +1,454 @@
+@implements IDisposable
+@inject StudioState State
+
+<div class="pane inspector-pane">
+    @if (State.SelectedItems.Count == 0)
+    {
+        <p class="hint">Select an item in the grid. Cmd/Ctrl-click to select several — giving
+            them the same name combines them into one item.</p>
+    }
+    else if (State.SelectedItems.Count > 1)
+    {
+        <div class="item-props">
+            <strong>@State.SelectedItems.Count items selected</strong>
+            <label>Name
+                <input placeholder="set all — same name combines them"
+                       @onchange="e => State.RenameSelectedItems((string?)e.Value ?? string.Empty)" />
+            </label>
+            <label>Category
+                <input list="used-categories" placeholder="set all"
+                       @onchange="e => { if (e.Value is string c && c.Length > 0) State.SetSelectedItemsCategory(c); }" />
+            </label>
+            <datalist id="used-categories">
+                @foreach (var category in State.UsedCategories())
+                {
+                    <option value="@category" />
+                }
+            </datalist>
+        </div>
+    }
+    else
+    {
+        var item = State.SelectedItems[0];
+        var previewKey = PreviewFrame(item);
+        var heroPx = 96 + State.FrameThumbSize * 2;
+        <div class="item-head">
+        <div class="item-hero" title="click to open large view"
+             @onclick="() => OpenLightbox(item, previewKey)">
+            <img src="@State.GetUrl(previewKey)" alt="preview"
+                 style="width:@(heroPx)px;height:@(heroPx)px" />
+            @if (item.TileKeys.Count > 1)
+            {
+                <span class="hero-count">@(item.TileKeys.IndexOf(previewKey) + 1)/@item.TileKeys.Count</span>
+            }
+        </div>
+        <div class="item-head-fields">
+        <div class="item-props">
+            <label>Name
+                <span class="alias-row">
+                    <input value="@item.Name"
+                           placeholder="@State.ItemNamePlaceholder(item)"
+                           @onchange="e => { item.Name = (string?)e.Value ?? string.Empty; State.RenameSelectedItems(item.Name); }" />
+                    <button class="alias-toggle @(item.GenerationAlias is { Length: > 0 } ? "active" : "")"
+                            title="prompt alias — safer alternate terms for AI prompts only"
+                            @onclick:preventDefault @onclick="() => ToggleAlias(item)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.1709 4.27639C6.25559 4.107 6.42873 4 6.61811 4H13.382C13.5714 4 13.7446 4.107 13.8293 4.27639L15.0529 6.72361C15.1764 6.9706 15.4767 7.07071 15.7237 6.94721C15.9707 6.82372 16.0708 6.52338 15.9473 6.27639L14.7237 3.82918C14.4696 3.321 13.9502 3 13.382 3H6.61811C6.04995 3 5.53056 3.321 5.27647 3.82918L4.05286 6.27639C3.92937 6.52338 4.02948 6.82372 4.27647 6.94721C4.52346 7.07071 4.8238 6.9706 4.94729 6.72361L6.1709 4.27639ZM17.4179 8.99322C11.4723 8.00227 8.52785 8.00226 2.58228 8.99322C2.3099 9.03862 2.05228 8.85461 2.00688 8.58223C1.96148 8.30984 2.14549 8.05223 2.41788 8.00683C8.4723 6.99772 11.5279 6.99773 17.5823 8.00683C17.8547 8.05223 18.0387 8.30984 17.9933 8.58223C17.9479 8.85461 17.6903 9.03862 17.4179 8.99322ZM5.50008 11C4.11937 11 3.00008 12.1193 3.00008 13.5C3.00008 14.8807 4.11937 16 5.50008 16C6.88079 16 8.00008 14.8807 8.00008 13.5C8.00008 12.1193 6.88079 11 5.50008 11ZM2.00008 13.5C2.00008 11.567 3.56708 10 5.50008 10C7.26331 10 8.72202 11.3039 8.96463 13H11.0355C11.2781 11.3039 12.7368 10 14.5001 10C16.4331 10 18.0001 11.567 18.0001 13.5C18.0001 15.433 16.4331 17 14.5001 17C12.7368 17 11.2781 15.6961 11.0355 14H8.96463C8.72202 15.6961 7.26331 17 5.50008 17C3.56708 17 2.00008 15.433 2.00008 13.5ZM14.5001 11C13.1194 11 12.0001 12.1193 12.0001 13.5C12.0001 14.8807 13.1194 16 14.5001 16C15.8808 16 17.0001 14.8807 17.0001 13.5C17.0001 12.1193 15.8808 11 14.5001 11Z" fill="currentColor"/></svg></button>
+                </span>
+            </label>
+            @if (AliasVisible(item))
+            {
+                <input class="alias-input" value="@(item.GenerationAlias ?? string.Empty)"
+                       placeholder="Prompt alias to provide safer alternate terms which might get blocked"
+                       @onchange="e => { item.GenerationAlias = string.IsNullOrWhiteSpace((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }" />
+            }
+            <label>Category
+                <input list="used-categories"
+                       value="@item.Category"
+                       @onchange="e => SetCategory(item, (string?)e.Value)" />
+            </label>
+            <datalist id="used-categories">
+                @foreach (var category in State.UsedCategories())
+                {
+                    <option value="@category" />
+                }
+            </datalist>
+            @if (item.TileKeys.Count > 1)
+            {
+                <label class="toggle">
+                    <input type="checkbox" checked="@item.IsAnimation"
+                           @onchange="e => { item.IsAnimation = (bool)e.Value!; State.Notify(); }" />
+                    animation (cycle fast)
+                </label>
+            }
+        </div>
+
+        @if (item.TileKeys.Count == 1)
+        {
+            var soloKey = item.TileKeys[0];
+            var soloMeta = State.GetMeta(soloKey);
+            <div class="item-props">
+                <label>Purpose
+                    <span class="alias-row">
+                        <input value="@soloMeta.Purpose"
+                               placeholder="@State.FramePurposePlaceholder(soloKey)"
+                               @onchange="e => { soloMeta.Purpose = (string?)e.Value ?? string.Empty; State.Notify(); }" />
+                        <button class="alias-toggle @(soloMeta.GenerationAlias is { Length: > 0 } ? "active" : "")"
+                                title="prompt alias — safer alternate terms for AI prompts only"
+                                @onclick:preventDefault @onclick="() => ToggleAlias(soloMeta)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.1709 4.27639C6.25559 4.107 6.42873 4 6.61811 4H13.382C13.5714 4 13.7446 4.107 13.8293 4.27639L15.0529 6.72361C15.1764 6.9706 15.4767 7.07071 15.7237 6.94721C15.9707 6.82372 16.0708 6.52338 15.9473 6.27639L14.7237 3.82918C14.4696 3.321 13.9502 3 13.382 3H6.61811C6.04995 3 5.53056 3.321 5.27647 3.82918L4.05286 6.27639C3.92937 6.52338 4.02948 6.82372 4.27647 6.94721C4.52346 7.07071 4.8238 6.9706 4.94729 6.72361L6.1709 4.27639ZM17.4179 8.99322C11.4723 8.00227 8.52785 8.00226 2.58228 8.99322C2.3099 9.03862 2.05228 8.85461 2.00688 8.58223C1.96148 8.30984 2.14549 8.05223 2.41788 8.00683C8.4723 6.99772 11.5279 6.99773 17.5823 8.00683C17.8547 8.05223 18.0387 8.30984 17.9933 8.58223C17.9479 8.85461 17.6903 9.03862 17.4179 8.99322ZM5.50008 11C4.11937 11 3.00008 12.1193 3.00008 13.5C3.00008 14.8807 4.11937 16 5.50008 16C6.88079 16 8.00008 14.8807 8.00008 13.5C8.00008 12.1193 6.88079 11 5.50008 11ZM2.00008 13.5C2.00008 11.567 3.56708 10 5.50008 10C7.26331 10 8.72202 11.3039 8.96463 13H11.0355C11.2781 11.3039 12.7368 10 14.5001 10C16.4331 10 18.0001 11.567 18.0001 13.5C18.0001 15.433 16.4331 17 14.5001 17C12.7368 17 11.2781 15.6961 11.0355 14H8.96463C8.72202 15.6961 7.26331 17 5.50008 17C3.56708 17 2.00008 15.433 2.00008 13.5ZM14.5001 11C13.1194 11 12.0001 12.1193 12.0001 13.5C12.0001 14.8807 13.1194 16 14.5001 16C15.8808 16 17.0001 14.8807 17.0001 13.5C17.0001 12.1193 15.8808 11 14.5001 11Z" fill="currentColor"/></svg></button>
+                    </span>
+                </label>
+                @if (AliasVisible(soloMeta))
+                {
+                    <input class="alias-input" value="@(soloMeta.GenerationAlias ?? string.Empty)"
+                           placeholder="Prompt alias to provide safer alternate terms which might get blocked"
+                           @onchange="e => { soloMeta.GenerationAlias = string.IsNullOrWhiteSpace((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }" />
+                }
+                <label>Role
+                    <select value="@soloMeta.Role.ToString()"
+                            @onchange="e => SetRole(soloKey, soloMeta, (string?)e.Value)">
+                        <option value="@nameof(PairRole.Unclassified)">unclassified</option>
+                        <option value="@nameof(PairRole.Light)">light (pair source)</option>
+                        <option value="@nameof(PairRole.DerivedDark)">derived dark</option>
+                        <option value="@nameof(PairRole.AlternateDark)">alternate dark</option>
+                        <option value="@nameof(PairRole.Unique)">unique</option>
+                    </select>
+                </label>
+                @if (soloMeta.Role is PairRole.DerivedDark or PairRole.AlternateDark)
+                {
+                    <label>@(soloMeta.Role == PairRole.DerivedDark ? "Light source" : "Based on light (brightness reference)")
+                        <select value="@(soloMeta.LightSourceKey ?? string.Empty)"
+                                @onchange="e => { soloMeta.LightSourceKey = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }">
+                            <option value="">auto (@(StudioState.DefaultLightSource(soloKey) ?? "sibling"))</option>
+                            @foreach (var lightKey in LightSourceOptions(item, soloKey))
+                            {
+                                <option value="@lightKey">@LightOptionLabel(lightKey)</option>
+                            }
+                            @if (soloMeta.LightSourceKey is { Length: > 0 } soloCurrent &&
+                                 !LightSourceOptions(item, soloKey).Contains(soloCurrent))
+                            {
+                                <option value="@soloCurrent">@LightOptionLabel(soloCurrent) (@soloCurrent)</option>
+                            }
+                        </select>
+                    </label>
+                }
+            </div>
+        }
+        </div>
+        </div>
+        @if (item.TileKeys.Count > 1)
+        {
+            <div class="frame-list">
+                @foreach (var (key, frameIndex) in item.TileKeys.Select((k, i) => (k, i)))
+                {
+                    var meta = State.GetMeta(key);
+                    var dropIndex = frameIndex;
+                    <div class="frame-row @(_dropIndex == dropIndex && _dragFrameKey is not null ? "drop-indicator" : "")"
+                         @ondragover:preventDefault
+                         @ondragover="() => DragOver(dropIndex)"
+                         @ondrop="() => DropFrame(item, dropIndex)">
+                        @if (State.FrameEditMode)
+                        {
+                            <span class="drag-handle" title="drag to reorder" draggable="true"
+                                  @ondragstart="() => _dragFrameKey = key"
+                                  @ondragend="ResetFrameDrag">☰</span>
+                        }
+                        <img class="frame-thumb" src="@State.GetUrl(key)" alt="@key"
+                             style="width:@(State.FrameThumbSize)px;height:@(State.FrameThumbSize)px"
+                             title="@(State.GetCanonical(key)?.Constant ?? key)"
+                             draggable="true" @ondragstart="() => DragPayload.Keys = [key]" />
+                        <div class="frame-fields">
+                            <input class="frame-purpose"
+                                   value="@meta.Purpose"
+                                   placeholder="@State.FramePurposePlaceholder(key)"
+                                   @onchange="e => { meta.Purpose = (string?)e.Value ?? string.Empty; State.Notify(); }" />
+                            @if (State.VersionsFor(key).Count > 1)
+                            {
+                                <div class="frame-versions" title="@ActiveVersionTitle(key)">
+                                    <button @onclick="() => StepVersion(key, -1)">‹</button>
+                                    <span>@VersionLabel(key)</span>
+                                    <button @onclick="() => StepVersion(key, +1)">›</button>
+                                </div>
+                            }
+                            @if (_roleOpen.Contains(key))
+                            {
+                                <div class="frame-role">
+                                    <select value="@meta.Role.ToString()"
+                                            @onchange="e => SetRole(key, meta, (string?)e.Value)">
+                                        <option value="@nameof(PairRole.Unclassified)">unclassified</option>
+                                        <option value="@nameof(PairRole.Light)">light (pair source)</option>
+                                        <option value="@nameof(PairRole.DerivedDark)">derived dark</option>
+                                        <option value="@nameof(PairRole.AlternateDark)">alternate dark</option>
+                                        <option value="@nameof(PairRole.Unique)">unique</option>
+                                    </select>
+                                    @if (meta.Role is PairRole.DerivedDark or PairRole.AlternateDark)
+                                    {
+                                        <select class="role-source"
+                                                title="@(meta.Role == PairRole.DerivedDark ? "light source" : "brightness reference light")"
+                                                value="@(meta.LightSourceKey ?? string.Empty)"
+                                                @onchange="e => { meta.LightSourceKey = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }">
+                                            <option value="">auto (@(StudioState.DefaultLightSource(key) ?? "sibling"))</option>
+                                            @foreach (var lightKey in LightSourceOptions(item, key))
+                                            {
+                                                <option value="@lightKey">@LightOptionLabel(lightKey)</option>
+                                            }
+                                            @if (meta.LightSourceKey is { Length: > 0 } current &&
+                                                 !LightSourceOptions(item, key).Contains(current))
+                                            {
+                                                <option value="@current">@LightOptionLabel(current) (@current)</option>
+                                            }
+                                        </select>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <button class="role-toggle @(meta.Role != PairRole.Unclassified ? "has-role" : "")"
+                                title="@(meta.Role == PairRole.Unclassified ? "set light/dark role" : meta.Role.ToString())"
+                                @onclick="() => ToggleRole(key)">◐</button>
+                        @if (State.FrameEditMode)
+                        {
+                            <span class="frame-remove" title="detach frame from this item"
+                                  @onclick="() => State.RemoveFrame(item, key)"><IconDismiss Size="11" /></span>
+                        }
+                    </div>
+                }
+                @if (State.FrameEditMode)
+                {
+                    <div class="frame-drop-tail @(_dropIndex == item.TileKeys.Count && _dragFrameKey is not null ? "drop-indicator" : "")"
+                         @ondragover:preventDefault
+                         @ondragover="() => DragOver(item.TileKeys.Count)"
+                         @ondrop="() => DropFrame(item, item.TileKeys.Count)">drop here to move to end</div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@if (_lightboxItem is { } lightboxItem && _lightboxIndex < lightboxItem.TileKeys.Count)
+{
+    var lightboxKey = lightboxItem.TileKeys[_lightboxIndex];
+    var lightboxMeta = State.GetMeta(lightboxKey);
+    <StudioLightbox Title="@(lightboxItem.Name.Length > 0 ? lightboxItem.Name : State.ItemNamePlaceholder(lightboxItem))"
+                    Hint="@($"frame {_lightboxIndex + 1}/{lightboxItem.TileKeys.Count}")"
+                    ImageUrl="@State.GetUrl(lightboxKey)"
+                    OnClose="CloseLightbox"
+                    OnPrev="() => StepLightbox(-1)"
+                    OnNext="() => StepLightbox(+1)">
+        <LeftContent>
+            <label>Purpose
+                <span class="alias-row">
+                    <input value="@lightboxMeta.Purpose"
+                           placeholder="@State.FramePurposePlaceholder(lightboxKey)"
+                           @onchange="e => { lightboxMeta.Purpose = (string?)e.Value ?? string.Empty; State.Notify(); }" />
+                    <button class="alias-toggle @(lightboxMeta.GenerationAlias is { Length: > 0 } ? "active" : "")"
+                            title="prompt alias — safer alternate terms for AI prompts only"
+                            @onclick:preventDefault @onclick="() => ToggleAlias(lightboxMeta)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.1709 4.27639C6.25559 4.107 6.42873 4 6.61811 4H13.382C13.5714 4 13.7446 4.107 13.8293 4.27639L15.0529 6.72361C15.1764 6.9706 15.4767 7.07071 15.7237 6.94721C15.9707 6.82372 16.0708 6.52338 15.9473 6.27639L14.7237 3.82918C14.4696 3.321 13.9502 3 13.382 3H6.61811C6.04995 3 5.53056 3.321 5.27647 3.82918L4.05286 6.27639C3.92937 6.52338 4.02948 6.82372 4.27647 6.94721C4.52346 7.07071 4.8238 6.9706 4.94729 6.72361L6.1709 4.27639ZM17.4179 8.99322C11.4723 8.00227 8.52785 8.00226 2.58228 8.99322C2.3099 9.03862 2.05228 8.85461 2.00688 8.58223C1.96148 8.30984 2.14549 8.05223 2.41788 8.00683C8.4723 6.99772 11.5279 6.99773 17.5823 8.00683C17.8547 8.05223 18.0387 8.30984 17.9933 8.58223C17.9479 8.85461 17.6903 9.03862 17.4179 8.99322ZM5.50008 11C4.11937 11 3.00008 12.1193 3.00008 13.5C3.00008 14.8807 4.11937 16 5.50008 16C6.88079 16 8.00008 14.8807 8.00008 13.5C8.00008 12.1193 6.88079 11 5.50008 11ZM2.00008 13.5C2.00008 11.567 3.56708 10 5.50008 10C7.26331 10 8.72202 11.3039 8.96463 13H11.0355C11.2781 11.3039 12.7368 10 14.5001 10C16.4331 10 18.0001 11.567 18.0001 13.5C18.0001 15.433 16.4331 17 14.5001 17C12.7368 17 11.2781 15.6961 11.0355 14H8.96463C8.72202 15.6961 7.26331 17 5.50008 17C3.56708 17 2.00008 15.433 2.00008 13.5ZM14.5001 11C13.1194 11 12.0001 12.1193 12.0001 13.5C12.0001 14.8807 13.1194 16 14.5001 16C15.8808 16 17.0001 14.8807 17.0001 13.5C17.0001 12.1193 15.8808 11 14.5001 11Z" fill="currentColor"/></svg></button>
+                </span>
+            </label>
+            @if (AliasVisible(lightboxMeta))
+            {
+                <input class="alias-input" value="@(lightboxMeta.GenerationAlias ?? string.Empty)"
+                       placeholder="Prompt alias to provide safer alternate terms which might get blocked"
+                       @onchange="e => { lightboxMeta.GenerationAlias = string.IsNullOrWhiteSpace((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }" />
+            }
+            <label>Role
+                <select value="@lightboxMeta.Role.ToString()"
+                        @onchange="e => SetRole(lightboxKey, lightboxMeta, (string?)e.Value)">
+                    <option value="@nameof(PairRole.Unclassified)">unclassified</option>
+                    <option value="@nameof(PairRole.Light)">light (pair source)</option>
+                    <option value="@nameof(PairRole.DerivedDark)">derived dark</option>
+                    <option value="@nameof(PairRole.AlternateDark)">alternate dark</option>
+                    <option value="@nameof(PairRole.Unique)">unique</option>
+                </select>
+            </label>
+            @if (State.VersionsFor(lightboxKey).Count > 1)
+            {
+                <div class="frame-versions" title="@ActiveVersionTitle(lightboxKey)">
+                    <button @onclick="() => StepVersion(lightboxKey, -1)">‹</button>
+                    <span>version @VersionLabel(lightboxKey)</span>
+                    <button @onclick="() => StepVersion(lightboxKey, +1)">›</button>
+                </div>
+            }
+        </LeftContent>
+    </StudioLightbox>
+}
+
+@code {
+    private static bool IsSpriteKey(string key) => TileRef.Parse(key).Kind == TileKind.Sprite;
+
+    // Alias fields reveal behind the incognito toggle; a non-empty alias always shows.
+    private readonly HashSet<object> _aliasOpen = [];
+
+    private void ToggleAlias(object key)
+    {
+        if (!_aliasOpen.Remove(key))
+        {
+            _aliasOpen.Add(key);
+        }
+    }
+
+    private bool AliasVisible(TileItem item) =>
+        _aliasOpen.Contains(item) || item.GenerationAlias is { Length: > 0 };
+
+    private bool AliasVisible(TileMeta meta) =>
+        _aliasOpen.Contains(meta) || meta.GenerationAlias is { Length: > 0 };
+
+    private async Task StepVersion(string key, int direction)
+    {
+        var versions = State.VersionsFor(key);
+        if (versions.Count == 0)
+        {
+            return;
+        }
+        var index = versions.FindIndex(v => v.Id == State.GetMeta(key).ActiveVersionId);
+        var next = index < 0
+            ? (direction < 0 ? versions.Count - 1 : 0)
+            : Math.Clamp(index + direction, 0, versions.Count - 1);
+        if (next != index)
+        {
+            await State.SwitchTileVersionAsync(key, versions[next]);
+        }
+    }
+
+    private string VersionLabel(string key)
+    {
+        var versions = State.VersionsFor(key);
+        var index = versions.FindIndex(v => v.Id == State.GetMeta(key).ActiveVersionId);
+        return $"{(index < 0 ? "·" : (index + 1).ToString())}/{versions.Count}";
+    }
+
+    private string ActiveVersionTitle(string key)
+    {
+        var versions = State.VersionsFor(key);
+        var active = versions.FirstOrDefault(v => v.Id == State.GetMeta(key).ActiveVersionId);
+        return active is null
+            ? "no active version recorded — step to pick one"
+            : $"{active.Id} · {active.Kind} · {active.GroupName}";
+    }
+
+    private readonly HashSet<string> _roleOpen = [];
+    private string? _dragFrameKey;
+    private int? _dropIndex;
+    private int _tick;
+    private Timer? _timer;
+    private TileItem? _lightboxItem;
+    private int _lightboxIndex;
+
+    protected override void OnInitialized()
+    {
+        State.OnChange += StateHasChanged;
+        // 150ms base tick: fast cycle advances every 3 ticks (450ms), slow every 20 (3s).
+        _timer = new Timer(_ =>
+        {
+            _tick++;
+            if (State.SelectedItem is { TileKeys.Count: > 1 } && _lightboxItem is null)
+            {
+                _ = InvokeAsync(StateHasChanged);
+            }
+        }, null, 150, 150);
+    }
+
+    public void Dispose()
+    {
+        State.OnChange -= StateHasChanged;
+        _timer?.Dispose();
+    }
+
+
+    /// <summary>Big-preview frame: fast cycle for animations, slow cycle (~2.7s) for plain
+    /// multi-variant items.</summary>
+    private string PreviewFrame(TileItem item)
+    {
+        if (item.TileKeys.Count <= 1)
+        {
+            return item.TileKeys[0];
+        }
+        var step = item.IsAnimation ? _tick / 3 : _tick / 20;
+        return item.TileKeys[step % item.TileKeys.Count];
+    }
+
+    private void OpenLightbox(TileItem item, string currentKey)
+    {
+        _lightboxItem = item;
+        _lightboxIndex = Math.Max(0, item.TileKeys.IndexOf(currentKey));
+    }
+
+    private void CloseLightbox() => _lightboxItem = null;
+
+    private void StepLightbox(int direction)
+    {
+        if (_lightboxItem is null)
+        {
+            return;
+        }
+        var count = _lightboxItem.TileKeys.Count;
+        _lightboxIndex = (_lightboxIndex + direction + count) % count;
+    }
+
+    /// <summary>Light-marked sibling frames of the same item — the candidates a derived dark
+    /// can source from.</summary>
+    private List<string> LightSourceOptions(TileItem item, string exceptKey) =>
+        item.TileKeys
+            .Where(k => k != exceptKey && State.GetMeta(k).Role == PairRole.Light)
+            .ToList();
+
+    private string LightOptionLabel(string key)
+    {
+        var meta = State.GetMeta(key);
+        return meta.Purpose.Length > 0 ? meta.Purpose : State.FramePurposePlaceholder(key);
+    }
+
+    private void DragOver(int index)
+    {
+        if (_dragFrameKey is not null && _dropIndex != index)
+        {
+            _dropIndex = index;
+            StateHasChanged();
+        }
+    }
+
+    private void ResetFrameDrag()
+    {
+        _dragFrameKey = null;
+        _dropIndex = null;
+        StateHasChanged();
+    }
+
+    private void DropFrame(TileItem item, int targetIndex)
+    {
+        if (_dragFrameKey is { } key)
+        {
+            _dragFrameKey = null;
+            _dropIndex = null;
+            State.ReorderFrame(item, key, targetIndex);
+        }
+    }
+
+    private void SetCategory(TileItem item, string? category)
+    {
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            item.Category = category;
+            State.Notify();
+        }
+    }
+
+    private void ToggleRole(string key)
+    {
+        if (!_roleOpen.Remove(key))
+        {
+            _roleOpen.Add(key);
+        }
+    }
+
+    private void SetRole(string key, TileMeta meta, string? roleName)
+    {
+        if (!Enum.TryParse<PairRole>(roleName, out var role))
+        {
+            return;
+        }
+        meta.Role = role;
+        meta.LightSourceKey = role is PairRole.DerivedDark or PairRole.AlternateDark
+            ? meta.LightSourceKey ?? StudioState.DefaultLightSource(key)
+            : null;
+        State.Notify();
+    }
+}

@@ -1,0 +1,135 @@
+@using TextureStudio.App.Services
+@implements IDisposable
+@inject StudioState State
+
+@* Bottom-right job toasts, docked just above the Jobs button. A job's toast shows while
+   it arms (countdown + free cancel) and again when it needs the user (review/failed);
+   leaving the visible set plays a shrink-toward-the-button exit animation first. *@
+<div class="job-toasts">
+    @foreach (var card in _cards)
+    {
+        var job = card.Job;
+        <div class="job-toast @(card.Closing ? "closing" : "")"
+             role="button" @onclick="() => OpenJob(job)">
+            @if (job.State is JobState.AwaitingReview or JobState.Failed)
+            {
+                <button class="toast-dismiss close-btn" title="dismiss"
+                        @onclick:stopPropagation @onclick="() => Dismiss(job)"><IconDismiss Size="11" /></button>
+            }
+            <div class="job-line">
+                <strong>@job.Group.Name <span class="tab-num">#@job.Number</span></strong>
+                <span class="job-kind">@job.KindLabel</span>
+                @if (job.VariantLabel is not null)
+                {
+                    <span class="job-kind">@job.VariantLabel</span>
+                }
+            </div>
+            <div class="job-line">
+                <span class="job-state">
+                    @if (job.CancelRequested && job.State is JobState.Queued or JobState.Running)
+                    {
+                        <FluentProgressRing Style="width:14px;height:14px" />
+                        <text> Cancelling…</text>
+                    }
+                    else
+                    {
+                        @switch (job.State)
+                        {
+                            case JobState.Queued:
+                                <FluentProgressRing Style="width:14px;height:14px" />
+                                <text> @(job.Countdown > 0 ? $"Starting in {job.Countdown}s…" : "Queued…")</text>
+                                break;
+                            case JobState.Running:
+                                <FluentProgressRing Style="width:14px;height:14px" />
+                                <text> Running</text>
+                                break;
+                            case JobState.AwaitingReview:
+                                <text>⏸ Ready for Review</text>
+                                break;
+                            case JobState.Failed:
+                                <text>✕ Failed</text>
+                                break;
+                            case JobState.Cancelled:
+                                <text>⊘ Cancelled</text>
+                                break;
+                        }
+                    }
+                </span>
+                @if (!job.CancelRequested && job.State is JobState.Queued or JobState.Running)
+                {
+                    <button class="toast-cancel" title="stop this run"
+                            @onclick:stopPropagation @onclick="() => State.CancelJob(job)">
+                        Cancel
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private sealed class Card(GenerationJob job)
+    {
+        public GenerationJob Job { get; } = job;
+        public bool Closing { get; set; }
+    }
+
+    private readonly List<Card> _cards = [];
+
+    protected override void OnInitialized() => State.OnChange += Refresh;
+
+    public void Dispose() => State.OnChange -= Refresh;
+
+    private static bool ShouldShow(GenerationJob job) => job.State switch
+    {
+        JobState.Queued => true,
+        JobState.Running => job.CancelRequested,
+        JobState.AwaitingReview or JobState.Failed or JobState.Cancelled =>
+            !job.NotificationDismissed,
+        _ => false,
+    };
+
+    private void Refresh()
+    {
+        var want = State.Jobs.Where(ShouldShow).ToList();
+        foreach (var job in want)
+        {
+            var existing = _cards.FirstOrDefault(c => c.Job == job);
+            if (existing is null)
+            {
+                _cards.Add(new Card(job));
+            }
+            else
+            {
+                existing.Closing = false; // re-shown (e.g. countdown → needs review)
+            }
+        }
+        foreach (var card in _cards.Where(c => !c.Closing && !want.Contains(c.Job)).ToList())
+        {
+            card.Closing = true;
+            _ = RemoveAfterExitAsync(card);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RemoveAfterExitAsync(Card card)
+    {
+        await Task.Delay(280); // matches the toast-out animation length
+        if (card.Closing)
+        {
+            _cards.Remove(card);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void OpenJob(GenerationJob job)
+    {
+        State.SelectJob(job); // also marks the notification dismissed
+    }
+
+    private void Dismiss(GenerationJob job)
+    {
+        job.NotificationDismissed = true;
+        State.Notify();
+    }
+}
