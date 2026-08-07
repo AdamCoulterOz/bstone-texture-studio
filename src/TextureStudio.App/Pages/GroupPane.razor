@@ -313,9 +313,9 @@
                         <FluentProgressRing Style="width:28px;height:28px" />
                         <h3>@job.KindLabel @(job.Countdown > 0 ? $"starting in {job.Countdown}s…" : "queued…")</h3>
                         <p>'@job.Group.Name' #@job.Number — cancel within the countdown and the API call never fires</p>
-                        <button disabled="@job.CancelRequested"
+                        <button class="danger-btn" disabled="@job.CancelRequested"
                                 @onclick="() => State.CancelJob(job)">
-                            @(job.CancelRequested ? "cancelling…" : "Cancel")
+                            @(job.CancelRequested ? "Cancelling…" : "Cancel")
                         </button>
                     </div>
                 }
@@ -325,9 +325,9 @@
                         <FluentProgressRing Style="width:28px;height:28px" />
                         <h3>@job.KindLabel running for '@job.Group.Name' #@job.Number</h3>
                         <p>started @job.Created.ToString("HH:mm:ss") — you can keep working</p>
-                        <button disabled="@job.CancelRequested"
+                        <button class="danger-btn" disabled="@job.CancelRequested"
                                 @onclick="() => State.CancelJob(job)">
-                            @(job.CancelRequested ? "cancelling…" : "Cancel")
+                            @(job.CancelRequested ? "Cancelling…" : "Cancel")
                         </button>
                     </div>
                 }

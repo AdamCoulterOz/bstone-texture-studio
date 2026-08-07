@@ -581,7 +581,10 @@ select.mixed { font-style: italic; color: var(--dim); }
 @keyframes toast-out { to { opacity: 0; transform: translate(20%, 70%) scale(0.4); } }
 .job-toast .job-line { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .toast-dismiss { position: absolute; top: 2px; right: 2px; padding: 0 5px; font-size: 11px; }
-.toast-cancel { margin-left: auto; padding: 0 8px; font-size: 11px; }
+.toast-cancel { margin-left: auto; padding: 0 8px; font-size: 11px;
+    background: #c43c3c; border-color: #c43c3c; color: #fff; }
+.toast-cancel:hover { background: #a83232; border-color: #a83232; }
+.toast-cancel:disabled { background: #c43c3c; border-color: #c43c3c; }
 
 /* Results-view title bars: left controls, centered stage title, right-aligned CTAs. */
 .results-bar { position: relative; }
