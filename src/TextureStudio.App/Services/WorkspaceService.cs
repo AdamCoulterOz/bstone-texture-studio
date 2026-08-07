@@ -39,7 +39,7 @@ public sealed class WorkspaceService(IJSRuntime js)
     }
 
     public async Task WriteAsync(string path, byte[] bytes) =>
-        await js.InvokeVoidAsync("studioInterop.wsWrite", path, (object)bytes);
+        await js.InvokeVoidAsync("studioInterop.wsWrite", path, bytes);
 
     public async Task<byte[]?> ReadAsync(string path) =>
         await js.InvokeAsync<byte[]?>("studioInterop.wsRead", path);

@@ -8,22 +8,22 @@ public sealed class ImageCodec(IJSRuntime js)
 {
     public async Task<RgbaImage> DecodePngAsync(byte[] png)
     {
-        var result = await js.InvokeAsync<DecodedImage>("studioInterop.decodePng", (object)png);
+        var result = await js.InvokeAsync<DecodedImage>("studioInterop.decodePng", png);
         return new RgbaImage(result.Width, result.Height, result.Pixels);
     }
 
     public async Task<byte[]> EncodePngAsync(RgbaImage image) =>
         await js.InvokeAsync<byte[]>(
-            "studioInterop.encodePng", image.Width, image.Height, (object)image.Pixels);
+            "studioInterop.encodePng", image.Width, image.Height, image.Pixels);
 
     public async Task<string> ToDataUrlAsync(RgbaImage image) =>
         "data:image/png;base64," + Convert.ToBase64String(await EncodePngAsync(image));
 
     public async Task CopyPngToClipboardAsync(byte[] png) =>
-        await js.InvokeVoidAsync("studioInterop.copyPngToClipboard", (object)png);
+        await js.InvokeVoidAsync("studioInterop.copyPngToClipboard", png);
 
     public async Task DownloadAsync(string name, byte[] bytes, string mime = "application/octet-stream") =>
-        await js.InvokeVoidAsync("studioInterop.downloadFile", name, (object)bytes, mime);
+        await js.InvokeVoidAsync("studioInterop.downloadFile", name, bytes, mime);
 
     public async Task RegisterPasteHandlerAsync<T>(DotNetObjectReference<T> reference) where T : class =>
         await js.InvokeVoidAsync("studioInterop.registerPasteHandler", reference);
@@ -45,7 +45,7 @@ public sealed class ImageCodec(IJSRuntime js)
 
     /// <summary>Downscaled preview data URL; full-size pixels never enter .NET.</summary>
     public async Task<string> PreviewDataUrlAsync(byte[] png, int maxWidth) =>
-        await js.InvokeAsync<string>("studioInterop.pngPreviewDataUrl", (object)png, maxWidth);
+        await js.InvokeAsync<string>("studioInterop.pngPreviewDataUrl", png, maxWidth);
 
     /// <summary>Square grid composed from already-encoded PNGs (identity references).</summary>
     public async Task<byte[]> ComposePngGridAsync(IEnumerable<byte[]> pngs, int tilePx) =>
@@ -55,14 +55,14 @@ public sealed class ImageCodec(IJSRuntime js)
     /// (Gemini sometimes returns JPEG/WebP despite the PNG request).</summary>
     public async Task<(int Width, int Height)> PngSizeAsync(byte[] png)
     {
-        var size = await js.InvokeAsync<PngDimensions>("studioInterop.imageSize", (object)png);
+        var size = await js.InvokeAsync<PngDimensions>("studioInterop.imageSize", png);
         return (size.Width, size.Height);
     }
 
     /// <summary>Stroke revision outlines onto a PNG browser-side.</summary>
     public async Task<byte[]> AnnotatePngAsync(
         byte[] png, IEnumerable<(int X, int Y, int W, int H, string Color)> regions) =>
-        await js.InvokeAsync<byte[]>("studioInterop.annotatePng", (object)png,
+        await js.InvokeAsync<byte[]>("studioInterop.annotatePng", png,
             regions.Select(r => new { x = r.X, y = r.Y, w = r.W, h = r.H, color = r.Color }).ToArray());
 
     private sealed record PngDimensions(int Width, int Height);

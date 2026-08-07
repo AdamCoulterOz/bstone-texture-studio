@@ -472,6 +472,11 @@ public sealed class StudioState(
         {
             return "Progress";
         }
+        if (message.Contains("workspace") || message.Contains("Workspace") ||
+            message.Contains("VSWAP"))
+        {
+            return "Workspace";
+        }
         if (message.Contains("generation") || message.Contains("Generation") ||
             message.Contains("revision") || message.Contains("Revision") ||
             message.Contains("ready for review") || message.Contains("cancelled") ||
@@ -480,18 +485,13 @@ public sealed class StudioState(
         {
             return "Jobs";
         }
-        if (message.Contains("workspace") || message.Contains("Workspace") ||
-            message.Contains("VSWAP"))
-        {
-            return "Workspace";
-        }
         return "Info";
     }
 
-    private void SetStatus(string message)
+    private void SetStatus(string message, string? kind = null)
     {
         Status = message;
-        if (!Project.Ui.HiddenNotifications.Contains(ClassifyStatus(message)))
+        if (!Project.Ui.HiddenNotifications.Contains(kind ?? ClassifyStatus(message)))
         {
             Banner = message;
         }
@@ -2690,7 +2690,8 @@ public sealed class StudioState(
     {
         if (!await workspace.PickAsync())
         {
-            SetStatus("Workspace selection cancelled (or the browser lacks the File System Access API).");
+            SetStatus("Workspace selection cancelled (or the browser lacks the File System Access API).",
+                kind: "Errors");
             return;
         }
         await VerifyWorkspaceWritableAsync();
