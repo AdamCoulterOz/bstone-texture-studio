@@ -1,3 +1,5 @@
+using TextureStudio.Core.Model;
+
 namespace TextureStudio.Core.Imaging;
 
 public sealed record SliceResult(string TileKey, RgbaImage Image, bool UsedFallback, double WrapError);
@@ -52,13 +54,39 @@ public static class SheetSlicer
                 bx0 = (int)Math.Round(cx0);
                 bx1 = (int)Math.Round(cx0 + cw);
             }
-            var tile = sheet
-                .Crop(Math.Max(0, bx0), Math.Max(0, by0),
-                    Math.Min(sheet.Width, bx1) - Math.Max(0, bx0),
-                    Math.Min(sheet.Height, by1) - Math.Max(0, by0))
-                .Resample(targetPx, targetPx);
+            var crop = sheet.Crop(Math.Max(0, bx0), Math.Max(0, by0),
+                Math.Min(sheet.Width, bx1) - Math.Max(0, bx0),
+                Math.Min(sheet.Height, by1) - Math.Max(0, by0));
+            var tile = ToSquareTile(crop, cell, targetPx);
             return new SliceResult(cell.TileKey, tile, usedFallback, WrapError(tile));
         }
+    }
+
+    /// <summary>Bring a sliced crop to the square target size. Walls remap exactly (they
+    /// must fill the square). Sprite crops from non-square model output are fitted
+    /// aspect-true and centered on a magenta matte canvas instead — squishing character
+    /// art to square distorts it, and the matte padding keys away downstream.</summary>
+    private static RgbaImage ToSquareTile(RgbaImage crop, SheetCell cell, int targetPx)
+    {
+        var isSprite = TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite;
+        var aspectSkew = Math.Abs(crop.Width - crop.Height) / (double)Math.Max(crop.Width, crop.Height);
+        if (!isSprite || aspectSkew < 0.02)
+        {
+            return crop.Resample(targetPx, targetPx);
+        }
+        var scale = (double)targetPx / Math.Max(crop.Width, crop.Height);
+        var w = Math.Max(1, (int)Math.Round(crop.Width * scale));
+        var h = Math.Max(1, (int)Math.Round(crop.Height * scale));
+        var scaled = crop.Resample(w, h);
+        var canvas = new RgbaImage(targetPx, targetPx);
+        // Match the crop's background: pre-keyed (transparent-corner) sheets pad
+        // transparent; opaque sheets pad magenta so the keyer strips it as matte.
+        if (crop.Pixels[3] != 0 || crop.Pixels[(crop.Width - 1) * 4 + 3] != 0)
+        {
+            canvas.Fill(255, 0, 255);
+        }
+        canvas.Paste(scaled, (targetPx - w) / 2, (targetPx - h) / 2);
+        return canvas;
     }
 
     /// <summary>Mean abs RGB difference between the left and right edge columns — a proxy for
