@@ -61,6 +61,7 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.Core/Games/` | `IGame` / `IGameArchive` / `IGameMetadata` / `IGameLocator` / `IDirectoryTree`, plus `GameEdition`, `PackPlan` and `GameCatalog` — everything a source game dictates. See ARCHITECTURE.md for the member-by-member map. |
 | `src/TextureStudio.Core/Games/BlakeStone/` | The one shipped plugin: `BlakeStoneGame` (editions, pairing, pack plan, install links), `VswapArchive`, `BlakeStonePalette`, `BlakeStoneMetadata`, `BlakeStoneLocator`. Ported from bstone, hence GPL. |
 | `src/TextureStudio.App/Services/ContentSearchService.cs` | The read-only folder granted for the locator to search — an `IDirectoryTree` over a second File System Access handle, remembered separately from the workspace. |
+| `src/TextureStudio.App/Services/BrowserSupport.cs` + `Pages/BrowserGate.razor` | The capability gate: which browser APIs the studio requires, and the blocking overlay shown when one is absent. |
 | `src/TextureStudio.Core/Formats/` | VSWAP container + wall/sprite codecs — shared by the whole Wolfenstein family, so they sit outside any one plugin. |
 | `src/TextureStudio.Core/Imaging/SheetComposer.cs` | `PlanLayoutRuns` — the layout planner. Seamless runs butt edge-to-edge and never wrap; the grid stays square and at least as wide as the longest run. Returns `PlannedLayout{Manifest, Ghosts, Side}`. |
 | `src/TextureStudio.Core/Imaging/SheetSlicer.cs` | Cuts a returned sheet back into tiles: content-box detection with proportional fallback, per-cell seamless handling, sprite-box erosion, aspect-true sprite tiles on matte. |
@@ -242,6 +243,14 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
 - Razor HTML-encodes the result of an `@(…)` expression, so put the *literal*
   character in the C# string: `@("<workspace>")` renders `<workspace>`, while
   `@("&lt;workspace&gt;")` renders the entity text verbatim.
+- **A parameterless child component will not re-render because its parent
+  called `StateHasChanged`.** With no parameters there is nothing to diff, so a
+  child rendering off injected service state stays frozen at whatever that state
+  was on first render. Either give the child a parameter, subscribe it to an
+  event (as every pane does with `State.OnChange`), or — for a one-shot answer —
+  have the child `await` the same shared task in its own `OnInitializedAsync`.
+  `BrowserSupport.EnsureCheckedAsync` exists for exactly that: the shell and the
+  gate both await one probe, and neither has to render before the other.
 
 ### CSS
 

@@ -1,0 +1,44 @@
+@inject BrowserSupport Support
+
+@* Blocks the app when the browser cannot run it. Rendered over the shell rather than
+   instead of it, so what the studio looks like is still visible behind the scrim. *@
+@if (Support.Checked && Support.MissingRequired.Count > 0)
+{
+    <div class="gate-backdrop"></div>
+    <div class="gate" role="alertdialog" aria-modal="true" aria-labelledby="gate-title">
+        <h2 id="gate-title">This browser can&rsquo;t run Retro Texture Studio</h2>
+        <p>
+            The studio runs entirely on your machine — your game data, artwork and API key
+            never reach a server of ours. That means it leans on browser APIs this one
+            doesn&rsquo;t provide:
+        </p>
+        <ul class="gate-missing">
+            @foreach (var capability in Support.MissingRequired)
+            {
+                <li>
+                    <strong>@capability.Name</strong>
+                    <span>needed for @capability.Needed</span>
+                </li>
+            }
+        </ul>
+        <p>
+            <strong>Chrome</strong> or <strong>Edge</strong> on desktop will work, as will
+            other Chromium-based desktop browsers such as Brave, Opera or Arc. The File
+            System Access API is the usual reason for landing here: it is Chromium-only at
+            the time of writing, and absent on mobile browsers even on Chromium.
+        </p>
+        @if (Support.Missing.Any(c => !c.Required))
+        {
+            <p class="hint">
+                Also unavailable, though not required:
+                @string.Join(", ", Support.Missing.Where(c => !c.Required).Select(c => c.Name)).
+            </p>
+        }
+    </div>
+}
+
+@code {
+    // The gate owns its own answer: it needs the check settled before its first render, and
+    // cannot assume the shell asked first.
+    protected override async Task OnInitializedAsync() => await Support.EnsureCheckedAsync();
+}

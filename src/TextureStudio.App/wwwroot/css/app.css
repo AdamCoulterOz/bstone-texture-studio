@@ -411,6 +411,24 @@ select.mixed { font-style: italic; color: var(--dim); }
     border-radius: 0 5px 5px 0; padding: 2px 8px; font-size: 12px; color: var(--dim); }
 .ws-close:hover { background: color-mix(in srgb, var(--text) 8%, var(--panel2));
     border: 1px solid var(--edge); border-left: none; color: var(--text); }
+/* Unsupported-browser gate. Above every other layer (toasts are the highest at 65) and
+   pointer-blocking, because nothing behind it can actually be used. */
+.gate-backdrop { position: fixed; inset: 0; z-index: 200; background: var(--bg);
+    opacity: 0.82; backdrop-filter: saturate(0.25) blur(1.5px); }
+.gate { position: fixed; z-index: 201; top: 50%; left: 50%; translate: -50% -50%;
+    width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+    background: var(--panel); color: var(--text); border: 1px solid var(--edge);
+    border-radius: 10px; padding: 22px 24px; box-shadow: 0 16px 56px #0007; }
+.gate h2 { margin: 0 0 10px; font-size: 17px; }
+.gate p { margin: 0 0 12px; color: var(--dim); text-wrap: pretty; }
+.gate p strong { color: var(--text); }
+.gate-missing { margin: 0 0 14px; padding: 0; list-style: none; display: flex;
+    flex-direction: column; gap: 8px; }
+.gate-missing li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px;
+    background: var(--panel2); border: 1px solid var(--edge); border-radius: 6px; }
+.gate-missing strong { font-size: 13px; }
+.gate-missing span { color: var(--dim); font-size: 12px; }
+
 /* Game drawer: the folder being searched, and each located copy of the game. */
 .search-row { display: flex; align-items: center; gap: 6px; }
 .search-root { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;

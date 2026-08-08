@@ -147,6 +147,25 @@ workspace (`pickWorkspace`, `restoreWorkspace`, `wsRead`/`wsWrite`/`wsList`,
 `contentForget`). Both remember their handle in the same IndexedDB store under
 different keys, so granting one never disturbs the other.
 
+## Browser capability gate
+
+The studio is client-side end to end, so a browser missing one of its APIs is not
+degraded, it is unusable — without File System Access there is no workspace, and
+without a workspace there is nothing to import into. `BrowserSupport` probes for
+what the code actually calls (File System Access + writable handles,
+`OffscreenCanvas.convertToBlob`, `createImageBitmap`, IndexedDB; clipboard image
+write is tracked but optional) and `BrowserGate` blocks the app over a scrim,
+naming each absence and what it was needed for.
+
+Detection lives in `interop.js` (browser facts); which absences are fatal and how
+to describe them lives in C# (app policy). WebAssembly is deliberately not
+probed — the gate runs inside the Blazor app, so its own existence proves it.
+
+Both the shell and the gate `await BrowserSupport.EnsureCheckedAsync()` in their
+own `OnInitializedAsync`, which runs the probe once and hands both the same task.
+That is not incidental: the gate has no parameters, so a later `StateHasChanged`
+on the shell would not re-render it (see CONTEXT.md).
+
 ## State management
 
 There is no store, reducer or DI-scoped view models — one mutable object plus one

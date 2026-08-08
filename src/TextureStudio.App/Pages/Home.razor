@@ -3,7 +3,10 @@
 @inject StudioState State
 @inject ImageCodec Codec
 @inject GeminiImageClient Gemini
+@inject BrowserSupport Support
 @inject IJSRuntime JS
+
+<BrowserGate />
 
 <PageTitle>Retro Texture Studio</PageTitle>
 
@@ -852,7 +855,14 @@
         State.Notify();
     }
 
-    protected override void OnInitialized() => State.OnChange += OnStateChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        State.OnChange += OnStateChanged;
+        // Settle the capability question before anything paints: the gate is a child
+        // component with no parameters, so leaving it to a later StateHasChanged would
+        // leave it rendered against the pre-check state.
+        await Support.EnsureCheckedAsync();
+    }
 
     public void Dispose()
     {
@@ -951,6 +961,12 @@
     {
         if (firstRender)
         {
+            // Nothing below can work on a browser missing the APIs it depends on, and each
+            // restore would fail separately and read as the app being broken.
+            if (!Support.IsSupported)
+            {
+                return;
+            }
             _selfRef = DotNetObjectReference.Create(this);
             await Codec.RegisterPasteHandlerAsync(_selfRef);
             await RestoreLayoutAsync();

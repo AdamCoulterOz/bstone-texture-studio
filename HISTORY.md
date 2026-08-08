@@ -229,3 +229,19 @@ in the git log; this records *why* the shape of the project changed.
   the new URL, and the sibling `adamcoulteroz.github.io` project-04 row, JSON-LD,
   keywords and sitemap moved with it. The old Pages URL now 404s by design —
   GitHub redirects renamed repos, not their Pages sites.
+
+## 2026-08-08: Say So When the Browser Cannot Run It
+
+- Added a capability gate. Everything the studio does is client-side, so on a
+  browser without the File System Access API it was not degraded but dead — and
+  the only symptom was a folder picker that looked cancelled. Now it says which
+  APIs are missing, what each was for, and which browsers work.
+- Probed for what the code actually calls rather than sniffing the user agent:
+  detection cannot go stale the way "Safari doesn't support this" can.
+- Split the concern the same way as everything else here — detection in
+  `interop.js`, policy in C#. WebAssembly is not probed: the gate runs inside the
+  Blazor app, so its own existence proves it.
+- Learned the hard way that a **parameterless child component does not re-render
+  when its parent calls `StateHasChanged`**. The gate sat frozen on its
+  pre-check state through two attempted fixes before the cause was clear; both
+  components now await one shared task in their own `OnInitializedAsync`.

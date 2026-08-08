@@ -36,6 +36,28 @@ window.studioInterop = {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   },
 
+  // Feature detection for the capability gate. Detection only — which of these are
+  // required and what to tell the user about them is the app's call (BrowserSupport.cs).
+  // Probes are wrapped because merely touching some of these throws in hardened or
+  // private-mode contexts rather than reporting absent.
+  probeCapabilities() {
+    const ok = (probe) => { try { return probe() === true; } catch { return false; } };
+    return {
+      fileSystemAccess: ok(() => typeof window.showDirectoryPicker === "function"),
+      fileSystemWrite: ok(() =>
+        typeof FileSystemFileHandle !== "undefined" &&
+        typeof FileSystemFileHandle.prototype.createWritable === "function"),
+      offscreenCanvas: ok(() =>
+        typeof OffscreenCanvas === "function" &&
+        typeof OffscreenCanvas.prototype.convertToBlob === "function"),
+      imageBitmap: ok(() => typeof createImageBitmap === "function"),
+      indexedDb: ok(() => !!window.indexedDB),
+      clipboardImage: ok(() =>
+        typeof ClipboardItem === "function" &&
+        typeof navigator.clipboard?.write === "function"),
+    };
+  },
+
   registerPasteHandler(dotnetRef) {
     window.addEventListener("paste", async (e) => {
       for (const item of e.clipboardData?.items ?? []) {
