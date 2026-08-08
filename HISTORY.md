@@ -291,9 +291,14 @@ in the git log; this records *why* the shape of the project changed.
   `EnsureItemLayerAsync`. Neither was ever a migration: items are *derived* from
   the tiles, so a fresh import has none until it runs. Calling it a migration had
   it lumped in with code that was genuinely disposable.
-- Kept `SheetManifest.Seamless` and the slicer's sheet-level fallback. Checking
-  the real workspace found one `LastExport` still depending on it, so removing it
-  would have mis-cut a re-slice of that group — the assumption that "current
-  workspace means no legacy data" was wrong in exactly one place.
+- Found one `LastExport` manifest still carrying the old sheet-level seamless
+  flag, which would have mis-cut a re-slice of that group had the fallback been
+  removed blindly. The groups themselves had moved to runs years of edits ago —
+  the migration had only ever rewritten live fields, never the archived snapshot.
+  Converting that one manifest (three cells, sheet flag → per-cell flags, exactly
+  what the fallback expanded it to) then let the whole sheet-level concept go:
+  the fallback, `SheetManifest.Seamless`, and the seamless branch of `PlanLayout`.
+  Worth remembering that "the model is migrated" and "the data is migrated" are
+  different claims.
 - Verified by re-packing: 965 textures, byte-identical to the run before the
   removals.

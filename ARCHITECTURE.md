@@ -273,11 +273,11 @@ LoadFromWorkspaceAsync
 ```
 
 There are **no compatibility shims**. Only two workspaces have ever existed, so
-a format change is applied once and the migration deleted rather than carried
-forever — that is what keeps this load path short. The one deliberate exception
-is `SheetManifest.Seamless`: archived manifests predate per-cell seamless flags,
-and one still relies on the sheet-level fallback in `SheetSlicer`, so re-slicing
-an old export stays correct.
+a format change is applied to the data once and the migration deleted rather
+than carried forever — that is what keeps this load path short. Archived
+snapshots count as data: a stale `LastExport` manifest kept the sheet-level
+seamless fallback alive long after the groups themselves had moved to runs, and
+converting that one manifest is what let the fallback go.
 
 What survives here is *not* migration but **bootstrapping and invariants**: the
 item layer is derived from the tiles, so a fresh import has none until

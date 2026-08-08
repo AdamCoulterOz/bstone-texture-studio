@@ -21,7 +21,6 @@ public sealed record SheetManifest(
     int Rows,
     int TilePx,
     int GutterPx,
-    bool Seamless,
     ReservedCorner Reserved,
     IReadOnlyList<SheetCell> Cells);
 
@@ -32,53 +31,33 @@ public static class SheetComposer
     /// <summary>Smallest square cell grid that fits <paramref name="count"/> tiles.</summary>
     public static int SquareSide(int count) => (int)Math.Ceiling(Math.Sqrt(Math.Max(1, count)));
 
-    /// <summary>Compose tiles into an always-square sheet.
-    /// Non-seamless: columns are computed (ceil-sqrt) and every cell gets a gutter.
-    /// Seamless: the caller's column count fixes how mural rows wrap and rows are butted
-    /// edge-to-edge; empty cells pad right/bottom until the cell grid is square.</summary>
-    /// <summary>Pure layout math — cell placement without touching pixels. The app composes
-    /// the actual bitmap browser-side from this plan; Compose below remains for CLI/tests.</summary>
+    /// <summary>Pure layout math — cell placement without touching pixels, on a plain
+    /// square grid with a gutter around every cell. Seamless runs are
+    /// <see cref="PlanLayoutRuns"/>'s job; this is the simple case the app never needs
+    /// (it plans with runs and composes browser-side) but the slicer tests build on.</summary>
     public static SheetManifest PlanLayout(
         IReadOnlyList<string> keys,
-        int seamlessColumns,
         int tilePx,
-        int gutterPx,
-        bool seamless)
+        int gutterPx)
     {
         if (keys.Count == 0)
         {
             throw new ArgumentException("Need at least one tile.");
         }
-        int columns;
-        if (seamless)
-        {
-            var layoutColumns = Math.Max(1, seamlessColumns);
-            var layoutRows = (keys.Count + layoutColumns - 1) / layoutColumns;
-            columns = Math.Max(layoutColumns, layoutRows); // pad out to square
-        }
-        else
-        {
-            columns = SquareSide(keys.Count);
-        }
-        var side = columns;
-        var placeColumns = seamless ? Math.Max(1, seamlessColumns) : columns;
-
-        // Uniform square canvas; seamless rows butt their columns and leave the remaining
-        // width as background padding, keeping mural continuity AND a square sheet.
+        var side = SquareSide(keys.Count);
+        var placeColumns = side;
         var size = gutterPx + side * (tilePx + gutterPx);
         var cells = new List<SheetCell>();
         for (var tileIdx = 0; tileIdx < keys.Count; tileIdx++)
         {
             var row = tileIdx / placeColumns;
             var col = tileIdx % placeColumns;
-            var x = seamless
-                ? gutterPx + col * tilePx
-                : gutterPx + col * (tilePx + gutterPx);
+            var x = gutterPx + col * (tilePx + gutterPx);
             var y = gutterPx + row * (tilePx + gutterPx);
             cells.Add(new SheetCell(row * side + col, keys[tileIdx], x, y, tilePx, tilePx));
         }
         return new SheetManifest(
-            size, size, side, side, tilePx, gutterPx, seamless, ReservedCorner.None, cells);
+            size, size, side, side, tilePx, gutterPx, ReservedCorner.None, cells);
     }
 
     /// <summary>Run-aware layout: seamless runs (contiguous slices of <paramref name="keys"/>)
@@ -111,7 +90,7 @@ public static class SheetComposer
             {
                 var size = gutterPx + side * (tilePx + gutterPx);
                 var manifest = new SheetManifest(size, size, side, side, tilePx, gutterPx,
-                    runStart.Count > 0, ReservedCorner.None, cells);
+                    ReservedCorner.None, cells);
                 return new PlannedLayout(manifest, ghosts, side);
             }
             side++;
@@ -175,13 +154,10 @@ public static class SheetComposer
 
     public static (RgbaImage Sheet, SheetManifest Manifest) Compose(
         IReadOnlyList<(string Key, RgbaImage Image)> tiles,
-        int seamlessColumns,
         int tilePx,
-        int gutterPx,
-        bool seamless)
+        int gutterPx)
     {
-        var manifest = PlanLayout(tiles.Select(t => t.Key).ToList(),
-            seamlessColumns, tilePx, gutterPx, seamless);
+        var manifest = PlanLayout(tiles.Select(t => t.Key).ToList(), tilePx, gutterPx);
         var sheet = new RgbaImage(manifest.CanvasWidth, manifest.CanvasHeight);
         sheet.Fill(BgLevel, BgLevel, BgLevel);
         foreach (var (cell, (_, image)) in manifest.Cells.Zip(tiles))

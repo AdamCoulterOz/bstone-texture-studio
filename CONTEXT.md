@@ -191,9 +191,12 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
 - Deleting one has a checklist: convert **both** workspaces (the CLIs migrate in
   memory only — packing converts nothing), confirm on disk, and deal with any
   `.bak` files, which otherwise restore into ids matching no art.
-- The surviving exception is `SheetManifest.Seamless`. Archived manifests predate
-  per-cell seamless flags and one live `LastExport` still needs the sheet-level
-  fallback, so `SheetSlicer` keeps it. Verified against the data, not assumed.
+- **Archived snapshots are data too.** Groups had long since moved to
+  `SeamlessRuns`, but one group's `LastExport` manifest still carried the old
+  sheet-level seamless flag — migrations only ever rewrote live fields, never the
+  snapshot. That single manifest kept the slicer's fallback alive. Check
+  `LastExport` and `JobHistory[].Manifest` when retiring a format, not just the
+  live model.
 - `ItemLayerBuilder` is **not** a migration despite its history — items are
   derived from tiles, so it runs on every fresh import. Same for
   `ReconcileDuplicateItems` and `ValidateRuns`: invariants, not compatibility.

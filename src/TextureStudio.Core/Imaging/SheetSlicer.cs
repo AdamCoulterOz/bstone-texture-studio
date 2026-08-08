@@ -23,15 +23,12 @@ public static class SheetSlicer
     {
         var sx = (double)sheet.Width / manifest.CanvasWidth;
         var sy = (double)sheet.Height / manifest.CanvasHeight;
-        // Old manifests flagged seamless per sheet; run-aware ones flag the member cells.
-        var legacySeamless = manifest.Seamless && manifest.Cells.All(c => !c.Seamless);
-        var cellSeamless = cell.Seamless || legacySeamless;
         {
             var cx0 = cell.X * sx;
             var cy0 = cell.Y * sy;
             var cw = cell.W * sx;
             var ch = cell.H * sy;
-            var padX = Math.Max(2, (cellSeamless ? cell.W * 0.02 : manifest.GutterPx / 2.0) * sx);
+            var padX = Math.Max(2, (cell.Seamless ? cell.W * 0.02 : manifest.GutterPx / 2.0) * sx);
             var padY = Math.Max(2, manifest.GutterPx / 2.0 * sy);
             var (bx0, by0, bx1, by1, found) = DetectContentBox(
                 sheet, bg,
@@ -49,7 +46,7 @@ public static class SheetSlicer
             }
             // Seamless runs: trust detection vertically but slice horizontally by exact
             // proportion inside the run, because butted neighbors have no gutter to detect.
-            if (cellSeamless && !usedFallback)
+            if (cell.Seamless && !usedFallback)
             {
                 bx0 = (int)Math.Round(cx0);
                 bx1 = (int)Math.Round(cx0 + cw);

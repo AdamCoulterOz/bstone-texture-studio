@@ -61,8 +61,7 @@ public class CoreTests
             img.Fill((byte)(60 + t * 40), (byte)(200 - t * 30), 120);
             tiles.Add(($"wall:{t * 2}", img));
         }
-        var (sheet, manifest) = SheetComposer.Compose(
-            tiles, seamlessColumns: 3, tilePx: 128, gutterPx: 8, seamless: false);
+        var (sheet, manifest) = SheetComposer.Compose(tiles, tilePx: 128, gutterPx: 8);
         Assert.Equal(5, manifest.Cells.Count);
         // 5 tiles auto-lay-out on the smallest square grid: 3x3, square canvas.
         Assert.Equal(3, manifest.Columns);
@@ -86,8 +85,7 @@ public class CoreTests
     {
         var tile = new RgbaImage(64, 64);
         tile.Fill(200, 40, 40);
-        var (sheet, manifest) = SheetComposer.Compose(
-            [("wall:0", tile)], 1, 128, 16, seamless: false);
+        var (sheet, manifest) = SheetComposer.Compose([("w0", tile)], 128, 16);
         // Model-real drift: uniformly upscaled result whose content shifted a few pixels —
         // proportional mapping alone would clip an edge; bbox detection must recover it.
         var scaled = sheet.Resample(sheet.Width * 2, sheet.Height * 2);
@@ -113,24 +111,6 @@ public class CoreTests
         Assert.Equal(128, dark.Pixels[7]);
     }
 
-    [Fact]
-    public void Compose_SeamlessPadsToSquareKeepingRowLayout()
-    {
-        var tiles = Enumerable.Range(0, 6).Select(i =>
-        {
-            var img = new RgbaImage(64, 64);
-            img.Fill((byte)(40 + i * 30), 90, 90);
-            return ($"wall:{i}", img);
-        }).ToList();
-        // 6 murals laid out 3-wide by the user -> 2 rows; padded to a 3x3 square grid.
-        var (sheet, manifest) = SheetComposer.Compose(tiles, 3, 128, 16, seamless: true);
-        Assert.Equal(3, manifest.Columns);
-        Assert.Equal(3, manifest.Rows);
-        Assert.Equal(sheet.Width, sheet.Height);
-        // Row cells butt horizontally: second cell starts exactly one tile after the first.
-        Assert.Equal(manifest.Cells[0].X + 128, manifest.Cells[1].X);
-        Assert.Equal(6, manifest.Cells.Count);
-    }
 
     [Fact]
     public void AlphaKeyer_RemovesBorderBackgroundButKeepsInteriorWhites()
