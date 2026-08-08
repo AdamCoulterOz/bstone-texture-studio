@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Generate the app icon at every size the browser and OS ask for.
 
-The icon is the same tile at four resolutions — 1, 2x2, 3x3, 4x4 blocks in a violet to
-amber ramp — which is what the studio does to a texture. It is kept as code rather than as
-checked-in binaries so a colour or size can be changed without a design tool, and so the
-tiny sizes are rendered directly rather than downsampled from 512 (downsampling turns the
-4x4 quadrant to mush).
+The icon is a 2x2 checker: a texture tile, and a nod to the transparency checkerboard the
+studio spends its life keying. Four squares in two colours, edge to edge with no gaps —
+an app icon is mostly seen at 16-32px, where anything finer turns to mush and gaps blur into
+the fill. An earlier version subdivided the quadrants 1/2x2/3x3/4x4 to say "increasing
+resolution"; it was unreadable below 48px.
+
+Kept as code rather than checked-in binaries so a colour can be changed without a design
+tool, and so the tiny sizes are rendered directly rather than downsampled from 512.
 
 No third-party imaging library is used: PNG is a container around zlib-compressed scanlines,
 and the artwork is rectangles, so both are cheaper to write than to depend on.
@@ -20,44 +23,20 @@ from pathlib import Path
 BG = (0x16, 0x18, 0x1C)
 SS = 4  # supersampling factor, for antialiased corners
 
-# (grid x, grid y, subdivisions, hue, saturation, per-cell lightness or None for a ramp)
-QUADRANTS = [
-    (0, 0, 1, 282, 62, [58]),
-    (1, 0, 2, 322, 72, [56, 62, 50, 59]),
-    (0, 1, 3, 14, 84, [58, 63, 54, 61, 57, 66, 52, 60, 68]),
-    (1, 1, 4, 40, 95, None),
-]
+VIOLET = (0xA8, 0x55, 0xF7)
+AMBER = (0xF5, 0xB3, 0x01)
 
-
-def hsl_to_rgb(h, s, l):
-    h, s, l = h / 360.0, s / 100.0, l / 100.0
-    c = (1 - abs(2 * l - 1)) * s
-    x = c * (1 - abs((h * 6) % 2 - 1))
-    m = l - c / 2
-    r, g, b = [
-        (c, x, 0), (x, c, 0), (0, c, x), (0, x, c), (x, 0, c), (c, 0, x),
-    ][int(h * 6) % 6]
-    return tuple(round((v + m) * 255) for v in (r, g, b))
+# Checker: violet on one diagonal, amber on the other.
+QUADRANTS = [(0, 0, VIOLET), (1, 1, VIOLET), (1, 0, AMBER), (0, 1, AMBER)]
 
 
 def blocks(size, pad):
     """Rectangles to paint, in output-pixel coordinates, as (x0, y0, x1, y1, rgb)."""
-    inset = size * (0.10 + pad)
+    inset = size * (0.15 + pad)
     half = (size - inset * 2) / 2
-    out = []
-    for qx, qy, n, hue, sat, lights in QUADRANTS:
-        ox, oy, cell = inset + qx * half, inset + qy * half, half / n
-        # Gaps read as "pixels" but only muddy the colour below ~3px per cell.
-        gap = 0 if cell < 3 else max(0.5, cell * 0.07)
-        for i in range(n * n):
-            cx, cy = i % n, i // n
-            light = lights[i % len(lights)] if lights else 50 + ((cx + cy) / (2 * (n - 1))) * 24
-            out.append((
-                ox + cx * cell + gap, oy + cy * cell + gap,
-                ox + (cx + 1) * cell - gap, oy + (cy + 1) * cell - gap,
-                hsl_to_rgb(hue, sat, light),
-            ))
-    return out
+    return [(inset + qx * half, inset + qy * half,
+             inset + (qx + 1) * half, inset + (qy + 1) * half, colour)
+            for qx, qy, colour in QUADRANTS]
 
 
 def render(size, pad):

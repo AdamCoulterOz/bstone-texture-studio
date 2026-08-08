@@ -318,9 +318,12 @@ in the git log; this records *why* the shape of the project changed.
   activated immediately would have made the update flow untestable until it was
   already in front of users.
 - Generated the icon from a script instead of checking in binaries, so the tiny
-  sizes are rendered directly rather than downsampled — the 4x4 quadrant turns to
-  mush otherwise. Same reason it is drawn as four quadrants at increasing
-  subdivision: it is what the app does to a texture, and it survives being 16px.
+  sizes are rendered directly rather than downsampled.
+- Went through two icon designs. The first said "the same tile at increasing
+  resolution" via quadrants subdivided 1/2x2/3x3/4x4 — meaningful, and unreadable
+  below 48px. Replaced with a plain 2x2 checker: four squares, two colours, edge
+  to edge. An app icon lives at 16-32px, so legibility there outranks cleverness,
+  and a checker still says both "texture tile" and "transparency".
 - Found and fixed a real bug on the way: the first-render setup guarded on
   `!Support.IsSupported`, which is also false *while the capability probe is
   still running*. On a supported browser that could skip every restore —
