@@ -377,3 +377,32 @@ It was not the detection code — that was wired correctly all along.
   game/edition chip down beside the workspace it describes. With the OS buttons
   living in the bar there is less room, and both were saying something the window
   title and the status bar already say.
+- Then fixed it properly against a real installed app, which is where the
+  assumptions showed:
+  - **The right inset was wrong.** There is only one rectangle to query — the
+    usable strip — so the right inset is a subtraction against the window width.
+    Doing that in JS against `innerWidth` mixed coordinate spaces with the rect.
+    Both insets are now derived in CSS from `env(titlebar-area-*)`, where the terms
+    share a source. Edge on macOS makes this visible in a way Windows does not: it
+    has controls on *both* sides, its own `…` menu sitting opposite the traffic
+    lights.
+  - **The reserved strips clashed.** The browser paints them in the theme colour,
+    which was one fixed dark value, so they read as black blocks either side of a
+    light bar. Now scheme-scoped `theme-color` metas track `--panel` — and unlike
+    the manifest's `theme_color` they apply on reload, where a manifest change needs
+    a reinstall.
+  - **The update offer no longer centred.** It had been centred in the *free space*
+    between two spacer spans, which was near enough when the wordmark and chip
+    filled the left. With those gone it drifted well left, so it is now positioned
+    on the bar's centre and the trailing controls are pinned right by an auto
+    margin — auto margins absorb free space before flex-grow, which is what let one
+    rule serve both the offer-present and offer-absent cases.
+- Two self-inflicted bugs worth recording, both caught only by checking:
+  - A stray line left outside a `/* */` while editing a comment silently discarded
+    the **entire** `.topbar` rule — CSS error recovery skips to the end of the next
+    block. Height, both insets and `position: relative` all vanished, and the bar
+    still looked plausible because the base rule's `padding: 6px 10px` remained.
+  - The new "install failed" console diagnostic fired on every dev restart. A
+    worker that installs fine and is then superseded also ends up `redundant`, so
+    the check now requires reaching redundant *without* ever having been installed.
+    A diagnostic that cries wolf is worse than the silence it replaced.

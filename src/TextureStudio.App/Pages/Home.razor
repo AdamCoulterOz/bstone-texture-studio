@@ -12,7 +12,6 @@
 <PageTitle>Retro Texture Studio</PageTitle>
 
 <div class="topbar">
-    <span class="topbar-spacer"></span>
     @if (Updates.ShouldPrompt)
     {
         <span class="update-offer">
@@ -22,7 +21,6 @@
                     @onclick="Updates.Dismiss">&times;</button>
         </span>
     }
-    <span class="topbar-spacer"></span>
     <div class="seg view-seg" title="which art the item grid and platter display">
         <button class="seg-btn @(!State.ShowRedraw ? "active" : "")" title="show source art"
                 @onclick="() => SetShowRedraw(false)">

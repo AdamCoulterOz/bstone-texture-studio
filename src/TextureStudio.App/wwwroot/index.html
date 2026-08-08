@@ -17,7 +17,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
     <link rel="manifest" href="manifest.webmanifest" />
-    <meta name="theme-color" content="#16181c" />
+    <!-- The window-controls-overlay strips (the OS buttons, and Edge's own menu) are painted
+         by the browser in the theme colour, so a single fixed value leaves them clashing with
+         the title bar in one scheme or the other. Match --panel per scheme instead. These
+         override the manifest's theme_color, and unlike it they apply on reload rather than
+         needing a reinstall. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#1f2228" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Texture Studio" />
     <script type="importmap"></script>

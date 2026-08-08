@@ -143,10 +143,23 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
    overlay simulator, they update on resize without JS, and they are simply unset everywhere
    else. interop.js publishes the same rectangle from getTitlebarAreaRect() as --titlebar-*,
    which serves as the fallback and is what sets .wco. Hence the layered fallbacks: env, then
-   the queried rect, then the ordinary in-tab value. */
-.topbar { height: env(titlebar-area-height, var(--titlebar-h, auto));
+   the queried rect, then the ordinary in-tab value.
+
+   There is only ONE rectangle to query — the usable strip — not one per control group. So each
+   inset comes from an edge of it: the left is where the strip starts (macOS traffic lights sit
+   before it), and the right is whatever is left over between the strip's right edge and the
+   window (Edge puts its own "..." menu there). Both are derived in CSS so the two terms of that
+   subtraction come from the same coordinate space; doing it in JS against innerWidth meant
+   mixing sources, and the right inset came out wrong. */
+.topbar { position: relative; height: env(titlebar-area-height, var(--titlebar-h, auto));
     padding-left: calc(env(titlebar-area-x, var(--titlebar-l, 0px)) + 10px);
-    padding-right: calc(var(--titlebar-r, 0px) + 10px); }
+    padding-right: calc(100vw - env(titlebar-area-x, 0px)
+                        - env(titlebar-area-width, 100vw) + 10px); }
+/* Pin the trailing controls right without a spacer element. An auto margin absorbs free space
+   before flex-grow does, so when the update offer is showing its own auto margin splits the
+   space with this one and the offer lands centred — and when it is absent this alone keeps the
+   controls right. Spacer spans could not do both. */
+.topbar > .view-seg { margin-left: auto; }
 /* Only the structural changes are gated on the overlay actually showing. A fixed height, not
    min-height: matching the OS title bar is what makes the window read as native, and a bar
    that wrapped to two rows would drag from somewhere the OS is not. */
@@ -410,7 +423,6 @@ select.mixed { font-style: italic; color: var(--dim); }
     display: inline-flex; align-items: center; justify-content: center; }
 .ref-add { width: 20px; padding: 0; line-height: 1; }
 .style-ref-thumb-wrap.clickable { cursor: pointer; }
-.topbar-spacer { flex: 1; }
 .settings-wrap { position: relative; }
 .menu-backdrop { position: fixed; inset: 0; z-index: 59; }
 .settings-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 60;
@@ -438,7 +450,12 @@ select.mixed { font-style: italic; color: var(--dim); }
     border: 1px solid var(--edge); border-left: none; color: var(--text); }
 /* Update offer: centred in the title bar between the two flexible spacers. Deliberately the
    loudest thing in the chrome — it appears rarely and is easy to miss otherwise. */
-.update-offer { display: inline-flex; align-items: center; gap: 0; flex: none; }
+/* Centred on the bar itself, not on whatever space the controls leave over — with the wordmark
+   and game chip gone the left side is empty, so an in-flow offer drifted well left of centre.
+   Taken out of flow to do it: the two cannot collide above ~700px of bar, and the studio's grid
+   already needs ~1000px. */
+.update-offer { position: absolute; left: 50%; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 0; }
 .update-btn, .update-dismiss {
     background: #f5b301; color: #221a00; border: 1px solid #d99e00; font-weight: 700;
     height: 26px; padding: 0 12px; cursor: pointer; }

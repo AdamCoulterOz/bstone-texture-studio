@@ -73,17 +73,24 @@ window.studioInterop = {
       this._swRegistration = registration;
       const announce = () => dotnetRef.invokeMethodAsync("OnUpdateAvailable");
 
-      // Watch an incoming worker to the end of its install. "installed" means it is waiting
-      // and can be offered; "redundant" means the install threw and there is nothing to
-      // offer. A failed install is otherwise completely silent — it once went unnoticed
-      // across two deploys — so it is worth a console error even though nothing can be done
-      // about it at runtime.
+      // Watch an incoming worker to the end of its install. "installed" means it is waiting and
+      // can be offered. A failed install is otherwise completely silent — it once went
+      // unnoticed across two deploys — so it is worth a console error, even though nothing can
+      // be done about it at runtime.
+      //
+      // "redundant" alone does not mean failure: a worker that installed fine and was then
+      // superseded by a newer one ends up there too, which happens routinely in development.
+      // Only a worker that reached redundant *without* ever being installed actually threw.
       const track = incoming => {
         if (!incoming) return;
+        let installed = incoming.state === "installed" || incoming.state === "activated";
         const settle = () => {
+          if (incoming.state === "installed" || incoming.state === "activated") {
+            installed = true;
+          }
           if (incoming.state === "installed" && navigator.serviceWorker.controller) {
             announce(); // no controller means a first-ever install, not an update
-          } else if (incoming.state === "redundant") {
+          } else if (incoming.state === "redundant" && !installed) {
             console.error(
               "[update] the new service worker failed to install, so no update can be " +
               "offered. Its install caches every asset with an integrity hash, so the " +
@@ -147,13 +154,13 @@ window.studioInterop = {
       if (!wco.visible) {
         return; // leave the variables alone; the .wco rules that read them are off
       }
+      // Fallbacks only: the CSS prefers env(titlebar-area-*), which is the same rectangle
+      // reported by the engine. Just the two direct measurements — the right inset is a
+      // subtraction against the window width, and doing it here against innerWidth mixed
+      // coordinate spaces with the rect and came out wrong, so CSS derives that one from env().
       const rect = wco.getTitlebarAreaRect();
       root.style.setProperty("--titlebar-h", `${rect.height}px`);
-      // Insets rather than the raw rect: the buttons sit to the left of it on macOS and to the
-      // right on Windows, and the topbar only needs to know how much to keep clear on each
-      // side. Derived here because innerWidth is exact, where 100vw can include a scrollbar.
       root.style.setProperty("--titlebar-l", `${rect.x}px`);
-      root.style.setProperty("--titlebar-r", `${Math.max(0, innerWidth - rect.x - rect.width)}px`);
     };
     apply();
     // Fires on resize, on maximise, and when the overlay is toggled off entirely.
