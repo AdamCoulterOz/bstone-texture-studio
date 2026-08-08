@@ -165,12 +165,14 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
    that wrapped to two rows would drag from somewhere the OS is not. */
 :root.wco .topbar { flex-wrap: nowrap; -webkit-app-region: drag;
     padding-top: 0; padding-bottom: 0;
-    /* The control strips are painted over the page for the full height of the title bar area,
-       which is exactly this bar's height — so border-bottom, the last pixel inside that
-       height, is hidden under them at both ends and the divider appears to stop short. Draw it
-       one pixel lower instead, past where the strips reach. box-shadow does not affect layout,
-       and keeping the border transparent rather than removing it leaves the box unchanged. */
-    border-bottom-color: transparent; box-shadow: 0 1px 0 var(--edge); }
+    /* No hairline divider here, on purpose. The browser paints its control strips over the
+       page, and they turn out to be slightly taller than the rectangle it reports — so a
+       border-bottom is covered, and so is a box-shadow one pixel below it. Rather than keep
+       guessing an offset that clears them, the bar is given its own tone: the boundary is then
+       a change of colour across the whole width, including underneath the strips, and does not
+       depend on any single row of pixels surviving. index.html's theme-color metas must match
+       this, since that is what the strips themselves are painted in. */
+    background: var(--panel2); border-bottom-color: transparent; box-shadow: none; }
 /* Controls have to opt back out, or the drag region swallows the click. */
 :root.wco .topbar button, :root.wco .topbar .seg { -webkit-app-region: no-drag; }
 /* The workspace's game, in the status bar beside the workspace it belongs to — click to open
@@ -586,6 +588,11 @@ select.mixed { font-style: italic; color: var(--dim); }
 .side-section.collapsed { height: auto !important; min-height: 0; flex: none; }
 /* ---- Drawers + header size controls ---- */
 .drawer-backdrop { position: fixed; inset: 0; background: #0006; z-index: 40; }
+/* In overlay mode the title bar is the app's own chrome and the window's only drag handle, so
+   a full-height panel swallows it — the window cannot be moved while a drawer is open, and the
+   bar's controls disappear under a dimmed backdrop. Start both below the bar instead. */
+:root.wco .drawer, :root.wco .drawer-backdrop {
+    top: env(titlebar-area-height, var(--titlebar-h, 0px)); }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 400px; max-width: 90vw; background: var(--panel); border-left: 1px solid var(--edge); z-index: 41; display: flex; flex-direction: column; box-shadow: -6px 0 24px #0004; }
 .drawer-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--edge); }
 .drawer-body { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }

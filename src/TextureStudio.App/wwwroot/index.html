@@ -22,8 +22,11 @@
          the title bar in one scheme or the other. Match --panel per scheme instead. These
          override the manifest's theme_color, and unlike it they apply on reload rather than
          needing a reinstall. -->
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1f2228" media="(prefers-color-scheme: dark)" />
+    <!-- Must match .wco .topbar's background (--panel2), not --panel: in overlay mode the bar
+         is deliberately a shade off the content so the boundary reads without a hairline, and
+         the strips have to be the same shade or they show as blocks at either end. -->
+    <meta name="theme-color" content="#e9ebef" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#262a31" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Texture Studio" />
     <script type="importmap"></script>
