@@ -356,6 +356,21 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   without granting anything. A dev-only escape hatch (in-memory import, or a
   `?demo` flag opening a bundled read-only workspace) would close the remaining
   gap; that's a product change and needs the owner's call.
+- **`TileIdMigration` is scheduled for deletion.** Only two workspaces exist —
+  the author's and its tooling copy — so once both are on `w`/`s` ids the
+  migration, `IGame.MigrateTileId`, the migration test and the three call sites
+  are dead weight and should go. Preconditions, in order:
+  1. **Open each workspace in the app.** The migration rewrites in memory and
+     reaches disk through the usual chain (status → `Notify` → debounced save),
+     so opening is enough — but only the *app* does this. `TextureStudio.Pack`
+     and `Rekey` migrate in memory and never write `project.json`, so packing a
+     workspace does not convert it.
+  2. **Confirm on disk**, not by assumption: `project.json` should show `"w0"`,
+     not `"wall:0"`.
+  3. **Deal with the `project.json.bak-*` files** (four in the tooling copy).
+     They still hold legacy ids, and once the migration is gone, restoring one
+     produces a project whose ids match no art — the curation looks lost. Either
+     convert them, delete them, or accept the restore path is one-way.
 - **No deploy CI** — revisit once the .NET SDK for this app is on a stable
   channel rather than a preview band. Until then every deploy is the manual
   recipe above, so the published build silently lags `main` between releases.
