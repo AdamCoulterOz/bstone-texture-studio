@@ -467,18 +467,24 @@ select.mixed { font-style: italic; color: var(--dim); }
    Taken out of flow to do it: the two cannot collide above ~700px of bar, and the studio's grid
    already needs ~1000px. */
 .update-offer { position: absolute; left: 50%; transform: translateX(-50%);
-    display: inline-flex; align-items: center; gap: 0; }
-.update-btn, .update-dismiss {
-    background: #f5b301; color: #221a00; border: 1px solid #d99e00; font-weight: 700;
-    height: 26px; padding: 0 12px; cursor: pointer; }
-.update-btn { border-radius: 5px 0 0 5px; border-right: none; }
-.update-dismiss { border-radius: 0 5px 5px 0; width: 26px; padding: 0; font-size: 15px;
-    line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
-.update-btn:hover, .update-dismiss:hover { background: #ffc61a; border-color: #d99e00; }
+    display: inline-flex; align-items: center; gap: 4px; }
+/* A plain yellow pill saying "Update" — the title bar is short on room, and the word plus the
+   colour already say enough; the tooltip carries the detail. */
+.update-btn { background: #f5b301; color: #221a00; border: 1px solid #d99e00; font-weight: 700;
+    border-radius: 999px; height: 22px; padding: 0 14px; font-size: 12px; cursor: pointer; }
+.update-btn:hover { background: #ffc61a; border-color: #d99e00; }
+/* Detached from the pill and unfilled, so the pill stays a clean shape and dismissing stays
+   the quieter of the two actions. */
+.update-dismiss { background: none; border: none; border-radius: 999px; width: 20px; height: 20px;
+    padding: 0; font-size: 14px; line-height: 1; color: var(--dim); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; }
+.update-dismiss:hover { background: none; border: none; color: var(--text); }
 @media (prefers-reduced-motion: no-preference) {
     .update-offer { animation: update-in 240ms ease-out; }
 }
-@keyframes update-in { from { opacity: 0; transform: translateY(-4px); } }
+/* Must repeat the centring translate: a keyframe's transform replaces it outright, so without
+   it the offer slides in half its width to the right and snaps back when the animation ends. */
+@keyframes update-in { from { opacity: 0; transform: translateX(-50%) translateY(-4px); } }
 
 /* Unsupported-browser gate. Above every other layer (toasts are the highest at 65) and
    pointer-blocking, because nothing behind it can actually be used. */
