@@ -172,7 +172,11 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
        a change of colour across the whole width, including underneath the strips, and does not
        depend on any single row of pixels surviving. index.html's theme-color metas must match
        this, since that is what the strips themselves are painted in. */
-    background: var(--panel2); border-bottom-color: transparent; box-shadow: none; }
+    background: var(--panel2); border-bottom-color: transparent; box-shadow: none;
+    /* Above the drawer (41) and its backdrop (40), so a drawer slides *under* the bar rather
+       than spilling its shadow across it. The bar is window chrome once the OS title bar is
+       gone — it should stay put and stay undimmed while a panel comes and goes beneath it. */
+    z-index: 45; }
 /* Controls have to opt back out, or the drag region swallows the click. */
 :root.wco .topbar button, :root.wco .topbar .seg { -webkit-app-region: no-drag; }
 /* The workspace's game, in the status bar beside the workspace it belongs to — click to open
