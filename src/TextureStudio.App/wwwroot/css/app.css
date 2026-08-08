@@ -136,14 +136,22 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
 .statusbar > span:not(.statusbar-spacer):not(.spinner):not(.ws-split) {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 /* Window controls overlay: installed as an app, the OS title bar is replaced by the topbar,
-   which becomes the window's drag handle and must keep the reserved rect clear for the
-   close/minimise/zoom buttons. interop.js queries that rect and publishes it — the buttons are
-   on the left on macOS and the right on Windows, so neither side is assumed — and sets .wco
-   only while the overlay is actually showing, which a normal browser tab never is.
-   A fixed height, not min-height: matching the OS title bar is what makes the window read as
-   native, and a bar that wrapped to two rows would drag from somewhere the OS is not. */
-:root.wco .topbar { height: var(--titlebar-h); flex-wrap: nowrap; -webkit-app-region: drag;
-    padding: 0 calc(var(--titlebar-r) + 10px) 0 calc(var(--titlebar-l) + 10px); }
+   which becomes the window's drag handle and must keep the reserved rectangle clear for the
+   window buttons — on the left on macOS, on the right on Windows, so neither side is assumed.
+   Geometry comes from the browser's own env() variables first, because those are the
+   purpose-built channel: they are populated in an installed app window and by Edge DevTools'
+   overlay simulator, they update on resize without JS, and they are simply unset everywhere
+   else. interop.js publishes the same rectangle from getTitlebarAreaRect() as --titlebar-*,
+   which serves as the fallback and is what sets .wco. Hence the layered fallbacks: env, then
+   the queried rect, then the ordinary in-tab value. */
+.topbar { height: env(titlebar-area-height, var(--titlebar-h, auto));
+    padding-left: calc(env(titlebar-area-x, var(--titlebar-l, 0px)) + 10px);
+    padding-right: calc(var(--titlebar-r, 0px) + 10px); }
+/* Only the structural changes are gated on the overlay actually showing. A fixed height, not
+   min-height: matching the OS title bar is what makes the window read as native, and a bar
+   that wrapped to two rows would drag from somewhere the OS is not. */
+:root.wco .topbar { flex-wrap: nowrap; -webkit-app-region: drag;
+    padding-top: 0; padding-bottom: 0; }
 /* Controls have to opt back out, or the drag region swallows the click. */
 :root.wco .topbar button, :root.wco .topbar .seg { -webkit-app-region: no-drag; }
 /* The workspace's game, in the status bar beside the workspace it belongs to — click to open
