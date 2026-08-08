@@ -182,7 +182,7 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
 :root.wco .topbar button, :root.wco .topbar .seg { -webkit-app-region: no-drag; }
 /* The workspace's game, in the status bar beside the workspace it belongs to — click to open
    the Game drawer. Height matches .statusbar button so it sits on the same baseline. */
-.game-chip { display: inline-flex; gap: 6px; align-items: center; height: 26px; padding: 0 8px;
+.game-chip { display: inline-flex; gap: 6px; align-items: center; height: 27px; padding: 0 8px;
     color: var(--dim); font-size: 12px; flex: none; }
 .game-chip-edition { color: var(--dim); opacity: 0.75; }
 .game-chip-edition::before { content: "·"; margin-right: 6px; }
@@ -191,8 +191,15 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
    border-radius arc — the curvature eases into the straight edge instead of meeting it at a
    visible tangent. Both are ignored gracefully by anything that predates them, leaving an
    ordinary rounded-rect button. */
+/* height + inline-flex rather than relying on padding: a fixed height needs the content
+   centred explicitly, since line-height alone won't reliably centre 16px text in a 27px box
+   across every button (icon-only ones especially). More specific rules above set their own
+   explicit height (26px bumped to 27px alongside this one) or width for icon-square buttons,
+   which still wins the cascade over this. */
 button, .file-button { background: var(--panel2); color: var(--text); border: none;
-    border-radius: 5px; corner-shape: squircle; padding: 4px 10px; cursor: pointer; }
+    border-radius: 5px; corner-shape: squircle; height: 27px; padding: 0 10px;
+    font-size: 16px; display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; }
 /* Toward black rather than toward --panel2's own darker theme variable: --bg is not reliably
    darker than --panel2 in both themes (it is in dark mode, isn't in light mode), where mixing
    toward black always darkens. Same formula .cta-btn:hover already uses. */
@@ -243,7 +250,7 @@ label { display: inline-flex; gap: 6px; align-items: center; }
 .badge { position: absolute; font-size: 9px; line-height: 1; padding: 1px 3px; border-radius: 3px; background: var(--overlay); color: var(--overlay-text); }
 .badge.redraw { right: 2px; top: 2px; width: 8px; height: 8px; background: var(--ok); border-radius: 50%; }
 .badge.role { left: 2px; bottom: 2px; color: var(--dim); }
-.join-btn { height: 26px; padding: 0 10px; font-size: 12px; }
+.join-btn { height: 27px; padding: 0 10px; font-size: 12px; }
 .join-btn.ticked { border-color: var(--accent); color: var(--accent); }
 /* Main-area tabs: the grid is the permanent first tab; every opened job/import result
    gets its own closable tab, decoupled from the group selection. */
@@ -267,7 +274,7 @@ label { display: inline-flex; gap: 6px; align-items: center; }
 /* Segmented icon controls (view source/redraw, generation quality). --seg-bg feeds the
    quality badge's ring so it masks the bars behind it on any segment state. */
 .seg { display: inline-flex; }
-.seg-btn { --seg-bg: var(--panel2); width: 30px; height: 26px; padding: 0;
+.seg-btn { --seg-bg: var(--panel2); width: 30px; height: 27px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
     background: var(--seg-bg); color: var(--text); border: 1px solid var(--edge);
     border-radius: 0; margin-left: -1px; position: relative; }
@@ -338,7 +345,7 @@ label { display: inline-flex; gap: 6px; align-items: center; }
     align-items: center; justify-content: center; line-height: 1; }
 .sheet-actions { display: flex; gap: 6px; }
 .cta-actions { display: flex; gap: 6px; margin-left: auto; align-items: center; }
-.cta-btn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 12px;
+.cta-btn { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px;
     background: var(--accent); border: none; color: #fff;
     border-radius: 5px; corner-shape: squircle; font-size: 12px; cursor: pointer; }
 .cta-btn:hover { background: color-mix(in srgb, var(--accent) 85%, #000); }
@@ -415,7 +422,7 @@ select.mixed { font-style: italic; color: var(--dim); }
 .collapse-ctl { cursor: pointer; margin-right: 2px; }
 .props-column { flex: none; background: var(--bg); border-right: 1px solid var(--edge); }
 .statusbar-spacer { flex: 1; }
-.jobs-btn { font-size: 12px; padding: 0 10px; height: 26px; display: inline-flex; align-items: center; gap: 5px; }
+.jobs-btn { font-size: 12px; padding: 0 10px; height: 27px; display: inline-flex; align-items: center; gap: 5px; }
 .pill { border-radius: 999px; padding: 0 6px; font-size: 10px; line-height: 15px;
     font-weight: 600; color: #fff; }
 .pill-progress { background: #b8860b; }
@@ -503,7 +510,7 @@ select.mixed { font-style: italic; color: var(--dim); }
    direction as every other button's hover (color-mix toward black), just with hand-picked
    values instead of a formula so the two yellows stay a specific pairing. */
 .update-btn { background: #ffc61a; color: #221a00; border: none; font-weight: 700;
-    border-radius: 999px; height: 22px; padding: 0 14px; font-size: 12px; cursor: pointer;
+    border-radius: 999px; height: 27px; padding: 0 14px; font-size: 16px; cursor: pointer;
     /* A squircle rather than a plain arc: border-radius alone is a quarter-ellipse, which meets
        the straight edge at a visible tangent, where a superellipse eases into it. Ignored by
        anything that does not know corner-shape, which just leaves an ordinary pill. */
@@ -638,11 +645,11 @@ select.mixed { font-style: italic; color: var(--dim); }
 .drawer-body label.toggle { flex-direction: row; align-items: center; }
 /* File-picker labels are buttons, not fields — size them to their text. */
 .drawer-body label.file-button { display: inline-flex; flex-direction: row; align-items: center;
-    justify-content: center; height: 26px; padding: 0 12px; }
+    justify-content: center; height: 27px; padding: 0 12px; }
 .side-section h5 { display: flex; align-items: center; gap: 4px; }
 .size-controls { margin-left: auto; display: inline-flex; gap: 8px; align-items: center; }
-.size-controls button { padding: 0 10px; font-size: 12px; height: 26px; }
-.size-controls .file-button { padding: 0 10px; font-size: 12px; height: 26px;
+.size-controls button { padding: 0 10px; font-size: 12px; height: 27px; }
+.size-controls .file-button { padding: 0 10px; font-size: 12px; height: 27px;
     text-transform: none; letter-spacing: normal; display: inline-flex; align-items: center; }
 /* ---- Item hero preview, frame removal, lightbox ---- */
 .item-hero { position: relative; display: flex; justify-content: center; padding: 8px; background: var(--panel2); border-radius: 6px; margin-bottom: 10px; cursor: zoom-in; }
@@ -840,13 +847,13 @@ select.mixed { font-style: italic; color: var(--dim); }
 
 /* Round-12 sizing sweep: consistent 26px control heights, square dismiss buttons. */
 .close-btn { width: 26px; height: 26px; padding: 0; }
-button.ws-close { width: auto; height: 26px; padding: 0 8px; }
-.ws-name { height: 26px; display: inline-flex; align-items: center; }
+button.ws-close { width: auto; height: 27px; padding: 0 8px; }
+.ws-name { height: 27px; display: inline-flex; align-items: center; }
 .main-tab .tab-close, .platter-cell .cell-remove, .charref-remove,
 .job-toast .toast-dismiss, .job .job-dismiss, .revset-clear, .frame-remove { width: 20px; height: 20px; }
-.results-bar button, .results-bar .file-button { height: 26px; padding-top: 0; padding-bottom: 0; }
+.results-bar button, .results-bar .file-button { height: 27px; padding-top: 0; padding-bottom: 0; }
 .props-column h5 { padding-right: 4px; }
-.side-section h5 .size-controls .seg-btn { height: 26px; }
+.side-section h5 .size-controls .seg-btn { height: 27px; }
 /* Narrow results bars: the centered title becomes its own first row and every button
    wraps below it. */
 .group-pane { container-type: inline-size; }
@@ -859,7 +866,7 @@ button.ws-close { width: auto; height: 26px; padding: 0 8px; }
     color: var(--dim); }
 .effort-slider input[type=range] { width: 90px; padding: 0; }
 .effort-slider .effort-name { min-width: 52px; color: var(--text); }
-.statusbar button { height: 26px; padding-top: 0; padding-bottom: 0; }
+.statusbar button { height: 27px; padding-top: 0; padding-bottom: 0; }
 
 /* Icon-only buttons stay square with full-size icons: the 26px control-height sweep
    must not pad seg buttons (padding crushed the flex-shrinking svgs to ~6px). */
