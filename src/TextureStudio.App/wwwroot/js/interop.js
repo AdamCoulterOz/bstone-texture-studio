@@ -58,6 +58,56 @@ window.studioInterop = {
     };
   },
 
+  // ---- Service worker / installed-app update flow ----
+  //
+  // A new build produces a byte-different service-worker.js, which the browser installs
+  // alongside the running one and parks in "waiting" until every tab using the old one is
+  // gone. Reloading is not enough to escape that, which is why the app has to offer an
+  // explicit update rather than silently picking one up.
+  async registerServiceWorker(dotnetRef) {
+    if (!("serviceWorker" in navigator)) {
+      return false;
+    }
+    try {
+      const registration = await navigator.serviceWorker.register("service-worker.js");
+      this._swRegistration = registration;
+      const announce = () => dotnetRef.invokeMethodAsync("OnUpdateAvailable");
+      // A worker can already be waiting from an earlier visit or another tab.
+      if (registration.waiting && navigator.serviceWorker.controller) {
+        announce();
+      }
+      registration.addEventListener("updatefound", () => {
+        const incoming = registration.installing;
+        if (!incoming) return;
+        incoming.addEventListener("statechange", () => {
+          // Without a controller this is the first-ever install, not an update.
+          if (incoming.state === "installed" && navigator.serviceWorker.controller) {
+            announce();
+          }
+        });
+      });
+      const check = () => registration.update().catch(() => { /* offline is fine */ });
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
+      setInterval(check, 30 * 60 * 1000);
+      return true;
+    } catch {
+      return false; // unsupported, or blocked by the browser's storage settings
+    }
+  },
+
+  // Hand over to the waiting worker, then reload once it has taken control. Reloading first
+  // would just re-run the old version.
+  async applyUpdate() {
+    const registration = this._swRegistration;
+    if (!registration || !registration.waiting) {
+      location.reload();
+      return;
+    }
+    navigator.serviceWorker.addEventListener(
+      "controllerchange", () => location.reload(), { once: true });
+    registration.waiting.postMessage({ type: "SKIP_WAITING" });
+  },
+
   registerPasteHandler(dotnetRef) {
     window.addEventListener("paste", async (e) => {
       for (const item of e.clipboardData?.items ?? []) {

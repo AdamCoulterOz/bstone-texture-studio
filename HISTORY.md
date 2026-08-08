@@ -302,3 +302,26 @@ in the git log; this records *why* the shape of the project changed.
   different claims.
 - Verified by re-packing: 965 textures, byte-identical to the run before the
   removals.
+
+## 2026-08-08: Make It Installable
+
+- Added a PWA manifest and service worker so the studio installs as an app and
+  runs offline. A Blazor WASM app is nearly the ideal candidate — it is already
+  static files running client-side — and the ~35 MB runtime is exactly the sort
+  of payload worth caching once.
+- Chose to **offer** updates rather than apply them. A service worker parks a new
+  build in "waiting" until every tab on the old one closes, which for an
+  installed app may be never; but taking over silently reloads the page, and the
+  studio holds unsaved placement sessions and queued generations. Hence the
+  yellow title-bar button, and a dismiss that lasts until the next build.
+- Made the development worker wait as well. It caches nothing, but a worker that
+  activated immediately would have made the update flow untestable until it was
+  already in front of users.
+- Generated the icon from a script instead of checking in binaries, so the tiny
+  sizes are rendered directly rather than downsampled — the 4x4 quadrant turns to
+  mush otherwise. Same reason it is drawn as four quadrants at increasing
+  subdivision: it is what the app does to a texture, and it survives being 16px.
+- Found and fixed a real bug on the way: the first-render setup guarded on
+  `!Support.IsSupported`, which is also false *while the capability probe is
+  still running*. On a supported browser that could skip every restore —
+  including the workspace reconnect — depending on a race with the first render.

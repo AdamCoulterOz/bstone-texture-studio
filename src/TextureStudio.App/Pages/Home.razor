@@ -4,6 +4,7 @@
 @inject ImageCodec Codec
 @inject GeminiImageClient Gemini
 @inject BrowserSupport Support
+@inject AppUpdateService Updates
 @inject IJSRuntime JS
 
 <BrowserGate />
@@ -17,6 +18,16 @@
         @State.Game.Name
         <span class="game-chip-edition">@State.Edition.Name</span>
     </button>
+    <span class="topbar-spacer"></span>
+    @if (Updates.ShouldPrompt)
+    {
+        <span class="update-offer">
+            <button class="update-btn" title="reload into the newly published version"
+                    @onclick="Updates.ApplyAsync">Update Available: Install</button>
+            <button class="update-dismiss" title="keep running this version"
+                    @onclick="Updates.Dismiss">&times;</button>
+        </span>
+    }
     <span class="topbar-spacer"></span>
     <div class="seg view-seg" title="which art the item grid and platter display">
         <button class="seg-btn @(!State.ShowRedraw ? "active" : "")" title="show source art"
@@ -860,6 +871,7 @@
     protected override async Task OnInitializedAsync()
     {
         State.OnChange += OnStateChanged;
+        Updates.OnChange += OnStateChanged;
         // Settle the capability question before anything paints: the gate is a child
         // component with no parameters, so leaving it to a later StateHasChanged would
         // leave it rendered against the pre-check state.
@@ -869,6 +881,7 @@
     public void Dispose()
     {
         State.OnChange -= OnStateChanged;
+        Updates.OnChange -= OnStateChanged;
         _selfRef?.Dispose();
     }
 
@@ -965,11 +978,17 @@
         {
             // Nothing below can work on a browser missing the APIs it depends on, and each
             // restore would fail separately and read as the app being broken.
+            //
+            // Await the probe rather than reading IsSupported directly: the first render can
+            // happen before OnInitializedAsync's await resolves, and "not checked yet" also
+            // reads as unsupported — which would silently skip every restore below.
+            await Support.EnsureCheckedAsync();
             if (!Support.IsSupported)
             {
                 return;
             }
             _selfRef = DotNetObjectReference.Create(this);
+            await Updates.StartAsync();
             await Codec.RegisterPasteHandlerAsync(_selfRef);
             await RestoreLayoutAsync();
             _hasStoredWorkspace = await State.Workspace.HasStoredHandleAsync();

@@ -24,6 +24,7 @@ builder.Services.AddScoped<ImageCodec>();
 builder.Services.AddScoped<WorkspaceService>();
 builder.Services.AddScoped<ContentSearchService>();
 builder.Services.AddScoped<BrowserSupport>();
+builder.Services.AddScoped<AppUpdateService>();
 builder.Services.AddScoped<StudioState>();
 
 await builder.Build().RunAsync();

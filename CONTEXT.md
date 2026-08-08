@@ -61,6 +61,9 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.Core/Games/` | `IGame` / `IGameArchive` / `IGameMetadata` / `IGameLocator` / `IDirectoryTree`, plus `GameTile`, `GameEdition`, `PackPlan` and `GameCatalog` — everything a source game dictates. See ARCHITECTURE.md for the member-by-member map. |
 | `src/TextureStudio.Core/Games/BlakeStone/` | The one shipped plugin: `BlakeStoneGame` (editions, pairing, pack plan, install links), `BlakeStoneTiles` (the only place `w`/`s` ids mean anything), `VswapArchive`, `BlakeStonePalette`, `BlakeStoneMetadata`, `BlakeStoneLocator`. Ported from bstone, hence GPL. |
 | `src/TextureStudio.App/Services/ContentSearchService.cs` | The read-only folder granted for the locator to search — an `IDirectoryTree` over a second File System Access handle, remembered separately from the workspace. |
+| `src/TextureStudio.App/wwwroot/{manifest.webmanifest,service-worker.js,service-worker.published.js}` | PWA install + offline cache. Dev worker never caches but *does* wait, so the update flow is exercisable locally. |
+| `src/TextureStudio.App/Services/AppUpdateService.cs` | Watches for a waiting service worker and offers the title-bar update button. |
+| `tools/make-icons.py` | Generates every icon size plus `favicon.svg` from one geometry. Re-run after changing it: `python3 tools/make-icons.py src/TextureStudio.App/wwwroot`. |
 | `src/TextureStudio.App/Services/BrowserSupport.cs` + `Pages/BrowserGate.razor` | The capability gate: which browser APIs the studio requires, and the blocking overlay shown when one is absent. |
 | `src/TextureStudio.Core/Formats/` | VSWAP container + wall/sprite codecs — shared by the whole Wolfenstein family, so they sit outside any one plugin. |
 | `src/TextureStudio.Core/Imaging/SheetComposer.cs` | `PlanLayoutRuns` — the layout planner. Seamless runs butt edge-to-edge and never wrap; the grid stays square and at least as wide as the longest run. Returns `PlannedLayout{Manifest, Ghosts, Side}`. |
@@ -182,6 +185,23 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   pairs odd walls to their even sibling.
 
 ## Current Decisions
+
+### PWA and updates
+
+- **Updates are offered, never taken automatically.** Accepting reloads the page,
+  and the studio holds unsaved in-flight work. A new worker waits until the user
+  says yes; neither worker calls `skipWaiting()` on install.
+- The **dev worker waits too**, deliberately. It does not cache (that would serve
+  stale builds), but if it activated immediately the update flow would be
+  impossible to exercise before it reached users.
+- A new build is detected by `service-worker-assets.js`'s version hash changing,
+  which makes `service-worker.js` byte-different. Nothing else triggers it.
+- Manifest URLs are all **relative** (`start_url: "./"`), because the app is
+  served at `/` in dev and `/retro-texture-studio/` in production.
+- **Service workers cannot be verified in the embedded browser pane** — it
+  reports an active worker immediately and fires no lifecycle events, even on a
+  fresh registration. Verify the offer by temporarily forcing the callback, and
+  the real flow in a normal browser.
 
 ### Legacy and migrations
 

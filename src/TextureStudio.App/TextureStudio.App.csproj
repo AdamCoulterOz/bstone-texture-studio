@@ -5,7 +5,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    <!-- Emits service-worker-assets.js at publish: every asset plus its integrity hash, which
+         is what lets the service worker cache the app and detect a new version. -->
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Dev serves the inert worker; publish swaps in the caching one under the same name. -->
+    <ServiceWorker Include="wwwroot\service-worker.js"
+                   PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
 
   <!-- Native relink: 1 GB initial / 4 GB max heap + SIMD. Requires the wasm-tools workload
        (sudo dotnet workload install wasm-tools), then build with -p:WasmNative=true.
