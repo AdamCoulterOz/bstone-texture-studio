@@ -42,6 +42,12 @@ dotnet run --project src/TextureStudio.App
 Requires a .NET SDK with the `wasm-tools` workload. The pack/re-slice CLIs
 live in `src/TextureStudio.Pack` and `src/TextureStudio.Rekey`.
 
+## Docs
+
+- [CONTEXT.md](CONTEXT.md) — project context, conventions, open questions
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how the pieces fit and data flows
+- [HISTORY.md](HISTORY.md) — significant decisions and turning points
+
 ## Credits & license
 
 GPL-2.0-or-later — see [LICENSE](LICENSE). The VSWAP/sprite format handling
