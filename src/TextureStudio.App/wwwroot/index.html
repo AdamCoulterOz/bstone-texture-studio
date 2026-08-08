@@ -22,6 +22,19 @@
          the title bar in one scheme or the other. Match --panel per scheme instead. These
          override the manifest's theme_color, and unlike it they apply on reload rather than
          needing a reinstall. -->
+    <!-- EXPERIMENT: can the window-controls-overlay strips be transparent, letting the page's
+         own title bar (and its hairline) show through underneath them? Transparency is
+         documented for CoreWebView2WindowControlsOverlay.BackgroundColor and for UWP caption
+         buttons, but both are native embedding APIs — nothing in the PWA surface exposes it,
+         so this is a guess worth one reload to settle.
+
+         The pair below is only a partial safety net: a UA falls through to the next matching
+         meta when a value is *invalid*, and "transparent" is a perfectly valid CSS colour, so
+         it will most likely be accepted and then resolved however that UA handles alpha —
+         honoured, ignored, or flattened to opaque black. Delete this line if it does nothing.
+
+         Tell: if it works, the divider runs unbroken under the traffic lights. -->
+    <meta name="theme-color" content="transparent" />
     <!-- Must match .wco .topbar's background (--panel2), not --panel: in overlay mode the bar
          is deliberately a shade off the content so the boundary reads without a hairline, and
          the strips have to be the same shade or they show as blocks at either end. -->
