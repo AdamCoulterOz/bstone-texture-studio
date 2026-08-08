@@ -47,10 +47,13 @@ def load(root):
 
 
 def stamp(manifest):
-    """A version derived from the content, so any change to what is served is a new worker."""
+    """A version derived from the content, so any change to what is served is a new worker.
+
+    urlsafe, because the version becomes part of the cache name — a "/" there is legal but
+    reads like a path separator in anything that logs it."""
     payload = "".join(f"{a['url']}:{a['hash']}" for a in sorted(manifest["assets"],
                                                                 key=lambda a: a["url"]))
-    return base64.b64encode(hashlib.sha256(payload.encode()).digest()).decode()[:8]
+    return base64.urlsafe_b64encode(hashlib.sha256(payload.encode()).digest()).decode()[:8]
 
 
 def main():
