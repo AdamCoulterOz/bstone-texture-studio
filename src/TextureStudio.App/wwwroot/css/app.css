@@ -165,18 +165,14 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
    that wrapped to two rows would drag from somewhere the OS is not. */
 :root.wco .topbar { flex-wrap: nowrap; -webkit-app-region: drag;
     padding-top: 0; padding-bottom: 0;
-    /* Two things at once, deliberately. The tone is the load-bearing one: the boundary is a
-       change of colour across the whole width, including underneath the strips, so it does not
-       depend on any single row of pixels surviving — two attempts at a hairline were both
-       eaten at the ends by something never reproduced locally. index.html's theme-color metas
-       must match this, since that is what the strips themselves are painted in.
-
-       The hairline is back on top of it as the tell for the transparent-theme-color experiment
-       in index.html: it is drawn a pixel below the box, so it shows under the traffic lights
-       only if those strips really are see-through. If the divider still stops short at the
-       ends, transparency was refused and this box-shadow can go again. */
-    background: var(--panel2); border-bottom-color: transparent;
-    box-shadow: 0 1px 0 var(--edge);
+    /* No hairline divider here, on purpose, and not for want of trying: border-bottom, then a
+       box-shadow a pixel below the box, then making the strips transparent so the page's own
+       line would show through — all three failed, the last because Chromium flattens alpha in
+       theme-color to opaque black (see index.html). The tone is what works: the boundary is a
+       change of colour across the whole width, including underneath the strips, so it depends
+       on nothing surviving at a single row of pixels. index.html's theme-color metas must
+       match this, since that is what the strips themselves are painted in. */
+    background: var(--panel2); border-bottom-color: transparent; box-shadow: none;
     /* Above the drawer (41) and its backdrop (40), so a drawer slides *under* the bar rather
        than spilling its shadow across it. The bar is window chrome once the OS title bar is
        gone — it should stay put and stay undimmed while a panel comes and goes beneath it. */

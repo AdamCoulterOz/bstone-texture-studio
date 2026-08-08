@@ -403,6 +403,15 @@ It was not the detection code — that was wired correctly all along.
     covered wherever a strip sat. The divider is now a `box-shadow` one pixel below
     the box, past where the strips reach, with the border kept transparent rather
     than removed so the box geometry does not shift.
+  - **The overlay strips cannot be transparent, settled by experiment.** If they
+    could, the page's own hairline would show through and none of the above would
+    have been needed. `theme-color: transparent` is *accepted* rather than skipped
+    — it is a valid CSS colour, so the fall-through to a later `<meta>` never
+    happens — and Chromium then flattens the alpha: `rgba(0,0,0,0)` rendered as
+    opaque black, giving black blocks at both ends. Transparency is real for
+    `CoreWebView2WindowControlsOverlay.BackgroundColor` and UWP caption buttons,
+    but those are native embedding APIs a PWA cannot reach. Reverted the same day;
+    the tone stays.
 - Two self-inflicted bugs worth recording, both caught only by checking:
   - A stray line left outside a `/* */` while editing a comment silently discarded
     the **entire** `.topbar` rule — CSS error recovery skips to the end of the next
