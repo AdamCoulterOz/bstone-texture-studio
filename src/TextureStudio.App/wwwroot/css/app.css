@@ -135,10 +135,21 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
     flex-wrap: nowrap; }
 .statusbar > span:not(.statusbar-spacer):not(.spinner):not(.ws-split) {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.brand { font-weight: 700; margin-right: 8px; }
-/* The workspace's game, always visible in the topbar — click to open the Game drawer. */
+/* Window controls overlay: installed as an app, the OS title bar is replaced by the topbar,
+   which becomes the window's drag handle and must keep the reserved rect clear for the
+   close/minimise/zoom buttons. interop.js queries that rect and publishes it — the buttons are
+   on the left on macOS and the right on Windows, so neither side is assumed — and sets .wco
+   only while the overlay is actually showing, which a normal browser tab never is.
+   A fixed height, not min-height: matching the OS title bar is what makes the window read as
+   native, and a bar that wrapped to two rows would drag from somewhere the OS is not. */
+:root.wco .topbar { height: var(--titlebar-h); flex-wrap: nowrap; -webkit-app-region: drag;
+    padding: 0 calc(var(--titlebar-r) + 10px) 0 calc(var(--titlebar-l) + 10px); }
+/* Controls have to opt back out, or the drag region swallows the click. */
+:root.wco .topbar button, :root.wco .topbar .seg { -webkit-app-region: no-drag; }
+/* The workspace's game, in the status bar beside the workspace it belongs to — click to open
+   the Game drawer. Height matches .statusbar button so it sits on the same baseline. */
 .game-chip { display: inline-flex; gap: 6px; align-items: center; height: 26px; padding: 0 8px;
-    color: var(--dim); font-size: 12px; }
+    color: var(--dim); font-size: 12px; flex: none; }
 .game-chip-edition { color: var(--dim); opacity: 0.75; }
 .game-chip-edition::before { content: "·"; margin-right: 6px; }
 button, .file-button { background: var(--panel2); color: var(--text); border: 1px solid var(--edge); border-radius: 5px; padding: 4px 10px; cursor: pointer; }

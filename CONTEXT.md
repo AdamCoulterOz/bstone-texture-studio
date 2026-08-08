@@ -64,6 +64,8 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.App/wwwroot/{manifest.webmanifest,service-worker.js,service-worker.published.js}` | PWA install + offline cache. Dev worker never caches but *does* wait, so the update flow is exercisable locally. |
 | `src/TextureStudio.App/Services/AppUpdateService.cs` | Watches for a waiting service worker and offers the title-bar update button. |
 | `tools/make-icons.py` | Generates every icon size plus `favicon.svg` from one geometry. Re-run after changing it: `python3 tools/make-icons.py src/TextureStudio.App/wwwroot`. |
+| `tools/deploy.sh` | **The only way to deploy.** Publish → base-href rewrite → re-stamp → verify → force-push `gh-pages`. |
+| `tools/sw_manifest.py` | Re-stamps `service-worker-assets.js` for files the deploy edits, and (`--verify`) refuses a tree whose hashes would make the worker's install throw. |
 | `src/TextureStudio.App/Services/BrowserSupport.cs` + `Pages/BrowserGate.razor` | The capability gate: which browser APIs the studio requires, and the blocking overlay shown when one is absent. |
 | `src/TextureStudio.Core/Formats/` | VSWAP container + wall/sprite codecs — shared by the whole Wolfenstein family, so they sit outside any one plugin. |
 | `src/TextureStudio.Core/Imaging/SheetComposer.cs` | `PlanLayoutRuns` — the layout planner. Seamless runs butt edge-to-edge and never wrap; the grid stays square and at least as wide as the longest run. Returns `PlannedLayout{Manifest, Ghosts, Side}`. |
@@ -130,21 +132,27 @@ preview pane refuses FS Access writes on restored handles.
 
 ### Deploying to GitHub Pages
 
-No CI yet (the net11 preview SDK is awkward in Actions). Manual recipe:
+No CI yet (the net11 preview SDK is awkward in Actions), but the recipe is a
+script — do not hand-roll it:
 
 ```bash
-dotnet publish src/TextureStudio.App -c Release -p:WasmNative=true -o <tmp>
-cd <tmp>/wwwroot
-sed -i '' 's|<base href="/" />|<base href="/retro-texture-studio/" />|' index.html
-touch .nojekyll
-cp index.html 404.html
-find . -name "*.br" -delete && find . -name "*.gz" -delete   # Pages won't content-negotiate
-git init -b gh-pages && git add -A && git commit -m "Deploy: …"
-git push -f https://github.com/AdamCoulterOz/retro-texture-studio.git gh-pages
+tools/deploy.sh "what changed (short sha)"
 ```
 
-Poll `gh api repos/AdamCoulterOz/retro-texture-studio/pages/builds/latest --jq '.status'`
-until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
+It publishes, rewrites the base href, re-stamps `service-worker-assets.js`,
+writes `.nojekyll` and `404.html`, drops `.br`/`.gz` (Pages won't
+content-negotiate), verifies every asset against the manifest, force-pushes
+`gh-pages`, and waits for the Pages build. GitHub's CDN can still serve the old
+files for a few minutes after that.
+
+> **Why it is a script.** The base href rewrite happens *after* publish, which
+> invalidates the integrity hash the service worker holds for `index.html`. Its
+> install caches every asset with `integrity`, and `cache.addAll` is
+> all-or-nothing, so install throws — and a worker that never installs never
+> waits, so the update button never appears and offline never works. It is
+> completely silent; the app keeps running from the network. Two deploys shipped
+> that way. `tools/sw_manifest.py` re-stamps and then verifies, and the verify
+> pass aborts the deploy rather than publishing a broken worker.
 
 > The base href **must** match the repo name — a mismatch serves an index that
 > cannot find its own assets. This bit once already: the rename moved the Pages
@@ -195,13 +203,38 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   stale builds), but if it activated immediately the update flow would be
   impossible to exercise before it reached users.
 - A new build is detected by `service-worker-assets.js`'s version hash changing,
-  which makes `service-worker.js` byte-different. Nothing else triggers it.
+  which makes `service-worker.js` byte-different. Nothing else triggers it — the
+  browser compares only the worker script's bytes, so the version stamp the build
+  injects as a leading comment is what carries every asset change into it.
+- **A failed install is silent and looks exactly like "no update available".**
+  Install caches every asset with its recorded `integrity` hash and `cache.addAll`
+  is all-or-nothing, so one post-publish edit breaks it completely. Deploy only
+  via `tools/deploy.sh`, which re-stamps and verifies. If the button ever stops
+  appearing, check that first, before the app code.
+- Detection does not wait on the browser's schedule: `interop.js` checks
+  immediately on registration, on `visibilitychange`, and every 30 minutes, and it
+  picks up a worker already `installing` or `waiting` when it attaches — the
+  `updatefound` event can fire during `register()`, before the listener exists.
 - Manifest URLs are all **relative** (`start_url: "./"`), because the app is
   served at `/` in dev and `/retro-texture-studio/` in production.
-- **Service workers cannot be verified in the embedded browser pane** — it
-  reports an active worker immediately and fires no lifecycle events, even on a
-  fresh registration. Verify the offer by temporarily forcing the callback, and
-  the real flow in a normal browser.
+- The **update flow does work in the embedded browser pane** — a waiting worker,
+  the Install click, the `SKIP_WAITING` handover and the reload were all verified
+  there. (An earlier note here claimed the pane virtualised service workers and
+  made this untestable; that was wrong, and it is why the flow went unverified
+  for so long.) What the pane *cannot* show is `app-region` dragging, which
+  Chromium only honours in an installed app window.
+
+### Window controls overlay
+
+- The reserved rectangle is **queried, never assumed** — window buttons are on the
+  left on macOS and the right on Windows, so `interop.js` publishes
+  `--titlebar-h/-l/-r` from `getTitlebarAreaRect()` and re-reads on
+  `geometrychange`.
+- `.wco` on `<html>` comes from `windowControlsOverlay.visible`, not from the API
+  existing: a supporting browser still reports `false` in an ordinary tab, where
+  the topbar must keep its normal flow height.
+- Controls inside the bar need `app-region: no-drag` or the drag region eats the
+  click.
 
 ### Legacy and migrations
 

@@ -328,3 +328,52 @@ in the git log; this records *why* the shape of the project changed.
   `!Support.IsSupported`, which is also false *while the capability probe is
   still running*. On a supported browser that could skip every restore —
   including the workspace reconnect — depending on a race with the first render.
+
+## 2026-08-08: The Update Button That Never Appeared
+
+The update offer shipped, two builds were deployed, and the button never showed.
+It was not the detection code — that was wired correctly all along.
+
+- **The service worker had never successfully installed, on either deploy.** Its
+  install caches every asset with the integrity hash recorded at publish time, and
+  `cache.addAll` is all-or-nothing. The deploy rewrites `index.html`'s
+  `<base href>` *after* publish, so that one file no longer matched its hash:
+  install threw, the worker never reached "waiting", and there was nothing to
+  offer. Offline had never worked either. Proved by hashing the live
+  `index.html` (`sha256-MW1h1BLN…`) against what the manifest demanded
+  (`sha256-58lXRxs8…`); of 7 sampled assets it was the only mismatch, and it is
+  the only file the deploy edits.
+- The failure mode is the problem as much as the bug: a worker whose install
+  throws is indistinguishable, from the page, from a worker that is simply up to
+  date. Nothing logs. So the fix is two-sided — `tools/deploy.sh` re-stamps the
+  manifest and *verifies every asset*, aborting rather than pushing a tree that
+  cannot install; and the page now logs a worker that goes `redundant`.
+- Scripted the deploy at the same time. It had been a documented sequence of
+  commands, which is precisely how a step gets left out.
+- Closed two real gaps in detection while in there: nothing triggered an update
+  check on load (it relied on the browser's own schedule), and `updatefound` can
+  fire during `register()` — before the listener attaches — leaving a worker
+  mid-install unnoticed until the next reload.
+- **Corrected an earlier note.** This file and CONTEXT.md claimed service workers
+  could not be verified in the embedded browser pane, which is why the flow was
+  left unverified. That was wrong: the pane reports a genuine `waiting` worker,
+  and the whole handover — Install → `SKIP_WAITING` → `controllerchange` → reload
+  → new worker `activated` → offer cleared — was verified there. Believing the
+  tooling was incapable is what let a broken deploy sit unnoticed.
+
+## 2026-08-08: Window Controls Overlay
+
+- Took over the title bar when installed, via
+  `display_override: ["window-controls-overlay", "standalone"]`. The topbar now
+  matches the OS title bar height exactly and pads itself clear of the window
+  buttons, so the app reads as native rather than as a page inside a frame.
+- The reserved rectangle is queried, not assumed. The buttons sit on the left on
+  macOS and the right on Windows, so `interop.js` publishes both insets and the
+  CSS keeps whichever side is occupied clear.
+- Gated on `windowControlsOverlay.visible` rather than on the API existing —
+  a supporting browser reports `false` in a normal tab, where the bar still needs
+  its ordinary flow height.
+- Dropped the "Retro Texture Studio" wordmark from the bar and moved the
+  game/edition chip down beside the workspace it describes. With the OS buttons
+  living in the bar there is less room, and both were saying something the window
+  title and the status bar already say.

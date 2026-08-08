@@ -72,21 +72,37 @@ window.studioInterop = {
       const registration = await navigator.serviceWorker.register("service-worker.js");
       this._swRegistration = registration;
       const announce = () => dotnetRef.invokeMethodAsync("OnUpdateAvailable");
-      // A worker can already be waiting from an earlier visit or another tab.
-      if (registration.waiting && navigator.serviceWorker.controller) {
-        announce();
-      }
-      registration.addEventListener("updatefound", () => {
-        const incoming = registration.installing;
+
+      // Watch an incoming worker to the end of its install. "installed" means it is waiting
+      // and can be offered; "redundant" means the install threw and there is nothing to
+      // offer. A failed install is otherwise completely silent — it once went unnoticed
+      // across two deploys — so it is worth a console error even though nothing can be done
+      // about it at runtime.
+      const track = incoming => {
         if (!incoming) return;
-        incoming.addEventListener("statechange", () => {
-          // Without a controller this is the first-ever install, not an update.
+        const settle = () => {
           if (incoming.state === "installed" && navigator.serviceWorker.controller) {
-            announce();
+            announce(); // no controller means a first-ever install, not an update
+          } else if (incoming.state === "redundant") {
+            console.error(
+              "[update] the new service worker failed to install, so no update can be " +
+              "offered. Its install caches every asset with an integrity hash, so the " +
+              "usual cause is a deployed file that no longer matches " +
+              "service-worker-assets.js.");
           }
-        });
-      });
+        };
+        settle(); // it may already have settled before we got here
+        incoming.addEventListener("statechange", settle);
+      };
+
+      // register() kicks off its own update check, so by the time this resolves a new worker
+      // may already be installing or waiting — in which case "updatefound" has fired and been
+      // missed. Pick up whatever is already in flight before relying on the event.
+      track(registration.waiting || registration.installing);
+      registration.addEventListener("updatefound", () => track(registration.installing));
+
       const check = () => registration.update().catch(() => { /* offline is fine */ });
+      check(); // don't wait on the browser's own schedule for the first look
       document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
       setInterval(check, 30 * 60 * 1000);
       return true;
@@ -106,6 +122,43 @@ window.studioInterop = {
     navigator.serviceWorker.addEventListener(
       "controllerchange", () => location.reload(), { once: true });
     registration.waiting.postMessage({ type: "SKIP_WAITING" });
+  },
+
+  // ---- Window controls overlay ----
+  //
+  // Installed with display_override "window-controls-overlay", the app draws its own title
+  // bar and the OS keeps only a small rectangle for the close/minimise/zoom buttons. The
+  // usable strip is reported as a rect, not a fixed inset: its height is the OS title bar
+  // height, and the buttons sit to its left on macOS and to its right on Windows. Publishing
+  // the rect as CSS variables lets the topbar match that height exactly and pad itself clear
+  // of the buttons on whichever side they are.
+  //
+  // The .wco class on <html> is what switches the topbar into overlay mode. It is not
+  // implied by the API existing — a browser that supports it still reports visible=false in a
+  // normal tab, where the topbar must keep its ordinary flow height.
+  initWindowControlsOverlay() {
+    const wco = navigator.windowControlsOverlay;
+    if (!wco) {
+      return false;
+    }
+    const root = document.documentElement;
+    const apply = () => {
+      root.classList.toggle("wco", wco.visible);
+      if (!wco.visible) {
+        return; // leave the variables alone; the .wco rules that read them are off
+      }
+      const rect = wco.getTitlebarAreaRect();
+      root.style.setProperty("--titlebar-h", `${rect.height}px`);
+      // Insets rather than the raw rect: the buttons sit to the left of it on macOS and to the
+      // right on Windows, and the topbar only needs to know how much to keep clear on each
+      // side. Derived here because innerWidth is exact, where 100vw can include a scrollbar.
+      root.style.setProperty("--titlebar-l", `${rect.x}px`);
+      root.style.setProperty("--titlebar-r", `${Math.max(0, innerWidth - rect.x - rect.width)}px`);
+    };
+    apply();
+    // Fires on resize, on maximise, and when the overlay is toggled off entirely.
+    wco.addEventListener("geometrychange", apply);
+    return wco.visible;
   },
 
   registerPasteHandler(dotnetRef) {

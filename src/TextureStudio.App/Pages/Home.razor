@@ -12,12 +12,6 @@
 <PageTitle>Retro Texture Studio</PageTitle>
 
 <div class="topbar">
-    <span class="brand">Retro Texture Studio</span>
-    <button class="game-chip" title="@($"this workspace targets {State.Game.Name} — {State.Edition.Name}. Click to change.")"
-            @onclick="() => OpenDrawer(Drawer.Game)">
-        @State.Game.Name
-        <span class="game-chip-edition">@State.Edition.Name</span>
-    </button>
     <span class="topbar-spacer"></span>
     @if (Updates.ShouldPrompt)
     {
@@ -571,6 +565,11 @@
 
 
 <div class="statusbar">
+    <button class="game-chip" title="@($"this workspace targets {State.Game.Name} — {State.Edition.Name}. Click to change.")"
+            @onclick="() => OpenDrawer(Drawer.Game)">
+        @State.Game.Name
+        <span class="game-chip-edition">@State.Edition.Name</span>
+    </button>
     @if (State.Workspace.IsOpen)
     {
         <span class="ws-split" title="@(State.Workspace.WritesBlocked ? "connected read-only — writes refused by the browser" : "workspace folder")">
@@ -988,6 +987,7 @@
                 return;
             }
             _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeAsync<bool>("studioInterop.initWindowControlsOverlay");
             await Updates.StartAsync();
             await Codec.RegisterPasteHandlerAsync(_selfRef);
             await RestoreLayoutAsync();
