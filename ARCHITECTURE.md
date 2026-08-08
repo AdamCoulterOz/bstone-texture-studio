@@ -267,12 +267,22 @@ LoadFromWorkspaceAsync
   └─ re-open source/           through the project's game; a mismatch is reported,
                                not thrown (the workspace still opens)
   └─ RestoreUiState()          reopen group, tabs, items filters, redraw toggle
-  └─ migrations (items, versions, style prompt, seamless runs)
+  └─ EnsureItemLayerAsync()   build items if none yet (every fresh import),
+                              then re-assert invariants: merge duplicate
+                              names, drop runs no longer contiguous
 ```
 
-Migrations are idempotent and run on every load, which is how old projects keep
-working across model changes (e.g. legacy whole-group `Seamless` → per-run
-`SeamlessRuns`).
+There are **no compatibility shims**. Only two workspaces have ever existed, so
+a format change is applied once and the migration deleted rather than carried
+forever — that is what keeps this load path short. The one deliberate exception
+is `SheetManifest.Seamless`: archived manifests predate per-cell seamless flags,
+and one still relies on the sheet-level fallback in `SheetSlicer`, so re-slicing
+an old export stays correct.
+
+What survives here is *not* migration but **bootstrapping and invariants**: the
+item layer is derived from the tiles, so a fresh import has none until
+`ItemLayerBuilder` runs, and duplicate names and broken seamless runs are
+re-checked because a project file can be hand-edited.
 
 ## Sheet layout
 

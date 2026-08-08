@@ -183,6 +183,21 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
 
 ## Current Decisions
 
+### Legacy and migrations
+
+- **Migrations are one-shot, not permanent.** There are exactly two workspaces,
+  so a format change is applied to both and the migration then deleted. Carrying
+  compatibility code for data nobody has is cost without benefit.
+- Deleting one has a checklist: convert **both** workspaces (the CLIs migrate in
+  memory only — packing converts nothing), confirm on disk, and deal with any
+  `.bak` files, which otherwise restore into ids matching no art.
+- The surviving exception is `SheetManifest.Seamless`. Archived manifests predate
+  per-cell seamless flags and one live `LastExport` still needs the sheet-level
+  fallback, so `SheetSlicer` keeps it. Verified against the data, not assumed.
+- `ItemLayerBuilder` is **not** a migration despite its history — items are
+  derived from tiles, so it runs on every fresh import. Same for
+  `ReconcileDuplicateItems` and `ValidateRuns`: invariants, not compatibility.
+
 ### Games
 
 - **The Items panel does not split by kind.** Kinds drive the pipeline, not
@@ -196,9 +211,6 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   one. `Project.GameId` defaults to `"blake-stone"` precisely so pre-plugin
   projects, which have no such field, land on the game they were made with; a
   test asserts the two literals agree.
-- `Project.SourceFileName` keeps `[JsonPropertyName("GameName")]`: the property
-  was renamed to stop it reading like the *game* rather than the imported file,
-  but the JSON key must stay put or existing workspaces lose it silently.
 - Edition is stored empty by default and *detected*; pinning it is a user
   override, not the norm. Importing a located copy whose edition contradicts a
   manual pin drops the pin — the file is the better witness.

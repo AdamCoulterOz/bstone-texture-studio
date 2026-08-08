@@ -341,7 +341,7 @@ public class CoreTests
     }
 
     [Fact]
-    public void ItemMigration_GroupsByNameThenFamilyThenSingleton()
+    public void ItemLayerBuilder_GroupsByNameThenFamilyThenSingleton()
     {
         var keys = new[] { "sprite:1", "sprite:2", "sprite:3", "sprite:4", "sprite:5" };
         var meta = new Dictionary<string, TileMeta>
@@ -350,7 +350,7 @@ public class CoreTests
             ["sprite:2"] = new() { Name = "Guard", Category = "Enemies" },
             // 3 and 4 unnamed but same engine family; 5 unnamed standalone
         };
-        var items = ItemMigration.Build(keys, meta,
+        var items = ItemLayerBuilder.Build(keys, meta,
             k => k is "sprite:3" or "sprite:4" ? "OOZE" : null);
 
         Assert.Equal(3, items.Count);

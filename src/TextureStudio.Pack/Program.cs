@@ -24,9 +24,7 @@ var outDir = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : Path.Combi
 string? editionArg = null;
 for (var i = 1; i < args.Length - 1; i++)
 {
-    // --game is the pre-plugin spelling; it took an asset directory (aog|ps) rather than an
-    // edition id, and both are matched below.
-    if (args[i] is "--edition" or "--game")
+    if (args[i] == "--edition")
     {
         editionArg = args[i + 1];
     }

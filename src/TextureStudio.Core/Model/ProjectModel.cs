@@ -76,12 +76,6 @@ public sealed class TileVersionInfo
 public static class Categories
 {
     public const string Uncategorized = "Uncategorized";
-
-    public static readonly string[] Defaults =
-    {
-        "Surfaces", "Flats", "Doors", "Characters", "Weapons", "Items",
-        "Decorations", "Effects", Uncategorized,
-    };
 }
 
 /// <summary>One accepted slice result for a group: its tiles live in the workspace under
@@ -123,9 +117,6 @@ public sealed class TileGroup
     public int Columns { get; set; } = 4;
     public int TilePx { get; set; } = 256;
     public int GutterPx { get; set; } = 16;
-    /// <summary>Legacy whole-group seamless flag — migrated to <see cref="SeamlessRuns"/>
-    /// on load and kept only so old project files deserialize.</summary>
-    public bool Seamless { get; set; }
     /// <summary>Seamless runs: each entry is an ordered, contiguous slice of
     /// <see cref="TileKeys"/> whose cells are butted edge-to-edge on the sheet.</summary>
     public List<List<string>> SeamlessRuns { get; set; } = [];
@@ -190,10 +181,6 @@ public sealed class Project
     public string GameId { get; set; } = "blake-stone";
     /// <summary>Pinned game edition id; empty means "detect from the imported archive".</summary>
     public string EditionId { get; set; } = "";
-    /// <summary>File name of the imported source archive, e.g. "VSWAP.BS6". Kept under its
-    /// original JSON name so existing workspaces keep loading.</summary>
-    [System.Text.Json.Serialization.JsonPropertyName("GameName")]
-    public string SourceFileName { get; set; } = "";
     public Dictionary<string, TileMeta> Meta { get; set; } = [];
     public List<TileItem> Items { get; set; } = [];
     public List<TileGroup> Groups { get; set; } = [];

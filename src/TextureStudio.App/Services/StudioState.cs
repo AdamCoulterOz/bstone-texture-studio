@@ -29,9 +29,6 @@ public sealed class StudioState(
     private byte[]? _sourceBytes;
     private CancellationTokenSource? _autoSaveCts;
 
-    /// <summary>Legacy single style reference — migrated into StyleRefs on load.</summary>
-    public const string StyleReferenceFileName = "style-reference.png";
-
     public WorkspaceService Workspace => workspace;
 
     public event Action? OnChange;
@@ -773,7 +770,6 @@ public sealed class StudioState(
     {
         Archive = Game.OpenArchive(bytes, fileName);
         _sourceBytes = bytes;
-        Project.SourceFileName = fileName;
         TileKeys.Clear();
         _originals.Clear();
         _urlCache.Clear();
@@ -850,9 +846,9 @@ public sealed class StudioState(
                 SetStatus($"Decoding tiles… {done}/{allKeys.Count}" + (persist ? " (writing workspace)" : ""));
             }
         }
-        SetStatus($"{Project.SourceFileName}: {TileKeys.Count} tiles decoded" +
+        SetStatus($"{fileName}: {TileKeys.Count} tiles decoded" +
                   (workspace.IsOpen ? $" — workspace '{workspace.Name}' up to date." : "."));
-        await EnsureItemsMigratedAsync();
+        await EnsureItemLayerAsync();
     }
 
     public RgbaImage GetOriginal(string key)
@@ -1208,9 +1204,10 @@ public sealed class StudioState(
     public void BumpFrameThumbSize(int direction) =>
         FrameThumbSize = Math.Clamp(FrameThumbSize + direction * 8, 24, 96);
 
-    /// <summary>Build the item layer once from legacy per-tile metadata (named tiles group by
-    /// Category+Name, unnamed sprites by engine actor family). No-op when items exist.</summary>
-    public async Task EnsureItemsMigratedAsync()
+    /// <summary>Build the item layer if this workspace has none yet — which is every fresh
+    /// import, since items are derived from the tiles rather than authored. Then re-assert
+    /// the invariants that a hand-edited or restored project could have broken.</summary>
+    public async Task EnsureItemLayerAsync()
     {
         if (Archive is null)
         {
@@ -1220,82 +1217,17 @@ public sealed class StudioState(
         {
             await EnsureMetadataAsync();
             var allKeys = TileKeys.ToList();
-            Project.Items = ItemMigration.Build(allKeys, Project.Meta, ActorFamilyFor);
+            Project.Items = ItemLayerBuilder.Build(allKeys, Project.Meta, ActorFamilyFor);
             SetStatus($"Item layer built: {Project.Items.Count} items from {allKeys.Count} tiles.");
         }
         ReconcileDuplicateItems();
-        MigrateTileVersions();
-        MigrateStylePrompt();
-        MigrateSeamlessRuns();
-    }
-
-    /// <summary>Convert the legacy whole-group seamless flag into per-run spans: each full
-    /// platter row (the old fixed column width) becomes one butted run. Idempotent.</summary>
-    private void MigrateSeamlessRuns()
-    {
         foreach (var group in Project.Groups)
         {
-            if (group.Seamless)
-            {
-                var cols = Math.Max(1, group.Columns);
-                for (var i = 0; i < group.TileKeys.Count; i += cols)
-                {
-                    var run = group.TileKeys.Skip(i).Take(cols).ToList();
-                    if (run.Count >= 2)
-                    {
-                        group.SeamlessRuns.Add(run);
-                    }
-                }
-                group.Seamless = false;
-            }
             ValidateRuns(group);
         }
     }
 
-    /// <summary>Build the per-frame version index from group revision records (the PNGs
-    /// already exist per-tile under revisions/). Idempotent — safe on every load.</summary>
-    private void MigrateTileVersions()
-    {
-        var added = 0;
-        foreach (var group in Project.Groups)
-        {
-            foreach (var revision in group.Revisions)
-            {
-                foreach (var key in revision.TileKeys)
-                {
-                    var versions = Project.TileVersions.TryGetValue(key, out var list)
-                        ? list
-                        : Project.TileVersions[key] = [];
-                    if (versions.Any(v => v.Id == revision.Id))
-                    {
-                        continue;
-                    }
-                    versions.Add(new TileVersionInfo
-                    {
-                        Id = revision.Id,
-                        Kind = revision.Kind,
-                        GroupName = group.Name,
-                        Created = revision.Created,
-                        File = $"revisions/{SafeName(group.Name)}/{revision.Id}/{FileNameFor(key)}",
-                    });
-                    added++;
-                    var meta = GetMeta(key);
-                    if (meta.ActiveVersionId is null && group.ActiveRevisionId == revision.Id)
-                    {
-                        meta.ActiveVersionId = revision.Id;
-                    }
-                }
-            }
-        }
-        foreach (var versions in Project.TileVersions.Values)
-        {
-            versions.Sort((a, b) => a.Created.CompareTo(b.Created));
-        }
-        if (added > 0)
-        {
-            SetStatus($"Version index: {added} per-frame versions recorded from revision history.");
-        }
-    }
+
 
     public List<TileVersionInfo> VersionsFor(string key) =>
         Project.TileVersions.GetValueOrDefault(key) ?? [];
@@ -2494,16 +2426,6 @@ public sealed class StudioState(
 
     /// <summary>One-time cleanup: earlier versions seeded the mechanics text into the
     /// user-editable style prompt — pull it out so it isn't sent twice.</summary>
-    private void MigrateStylePrompt()
-    {
-        var prompt = Project.Generation.StylePrompt;
-        var stripped = prompt.Replace(SheetMechanicsPrompt, "").Replace("  ", " ").Trim();
-        if (stripped != prompt)
-        {
-            Project.Generation.StylePrompt = stripped;
-            SetStatus("Style prompt: sheet-mechanics text moved into the built-in prompt.");
-        }
-    }
 
     public string BuildPrompt()
     {
@@ -3013,21 +2935,6 @@ public sealed class StudioState(
         {
             _openAiApiKey = System.Text.Encoding.UTF8.GetString(openAiKeyBytes).Trim();
         }
-        // Legacy single style reference → first entry of the ordered StyleRefs list,
-        // carrying the clause that used to be hard-coded so behavior is unchanged.
-        if (Project.Generation.StyleRefs.Count == 0 &&
-            await workspace.ReadAsync(StyleReferenceFileName) is { Length: > 0 })
-        {
-            Project.Generation.StyleRefs.Add(new StyleRefInfo
-            {
-                File = StyleReferenceFileName,
-                Context = "this game's established art direction: match its rendering style, " +
-                          "line weight, color treatment and shading exactly — but it is " +
-                          "context only; do not copy its subject matter, characters, or " +
-                          "layout into your output",
-            });
-            SetStatus("Legacy style reference migrated into the Style drawer.");
-        }
         var redrawCount = 0;
         foreach (var file in await workspace.ListAsync("redraws"))
         {
@@ -3041,7 +2948,7 @@ public sealed class StudioState(
             redrawCount++;
         }
         _derivedDarks.Clear();
-        await EnsureItemsMigratedAsync();
+        await EnsureItemLayerAsync();
         SetStatus($"Workspace '{workspace.Name}': {Project.Items.Count} items, " +
                   $"{Project.Groups.Count} groups, {redrawCount} redraws loaded.");
     }

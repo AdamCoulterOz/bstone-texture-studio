@@ -1,9 +1,9 @@
 namespace TextureStudio.Core.Model;
 
-/// <summary>Builds the item layer from legacy per-tile metadata: tiles sharing a non-empty
+/// <summary>Builds the item layer from the tiles themselves: tiles sharing a non-empty
 /// (Category, Name) become one item; unnamed tiles group by an engine-derived family key
 /// (actor prefix) so effect/actor families arrive as single items with placeholder names.</summary>
-public static class ItemMigration
+public static class ItemLayerBuilder
 {
     /// <summary>familyKey resolves a tile key to a grouping key for unnamed tiles (typically
     /// the sprite constant's actor prefix); return null for "stands alone".</summary>

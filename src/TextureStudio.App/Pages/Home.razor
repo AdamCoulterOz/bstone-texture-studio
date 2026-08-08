@@ -1060,23 +1060,6 @@
                     State.FrameThumbSize = Math.Clamp(thumbSize, 24, 96);
                 }
             }
-            else if (parts is { Length: >= 3 } && int.TryParse(parts[0], out var legacyW))
-            {
-                // Legacy v1 CSV: sidebar width + section heights/collapses + sizes.
-                _sidebarWidth = Math.Clamp(legacyW, 220, 900);
-                if (parts.Length >= 6)
-                {
-                    _collapsed[0] = parts[3] == "1";
-                    _collapsed[1] = parts[4] == "1";
-                }
-                if (parts.Length >= 8 &&
-                    int.TryParse(parts[6], out var itemSize) &&
-                    int.TryParse(parts[7], out var thumbSize))
-                {
-                    State.ItemColumns = itemSize is >= 2 and <= 12 ? itemSize : 5;
-                    State.FrameThumbSize = Math.Clamp(thumbSize, 24, 96);
-                }
-            }
         }
         catch
         {

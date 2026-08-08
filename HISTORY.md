@@ -277,3 +277,23 @@ in the git log; this records *why* the shape of the project changed.
   reads as total data loss rather than as an old backup.
 - The interface is the point: a game mints its ids and owns their spelling, so
   changing the scheme is a migration to plan, not a permanent seam.
+
+## 2026-08-08: Stop Carrying Compatibility Code
+
+- Deleted the remaining one-shot migrations now both workspaces are current: the
+  whole-group `Seamless` → per-run conversion (and the field), the version-index
+  backfill from group revisions, the style-prompt strip, the single legacy
+  style-reference file, and the v1 layout string in localStorage.
+- Dropped `Project.SourceFileName` — the open archive already knows its own name
+  — along with the unused `Categories.Defaults` and the Pack CLI's `--game`
+  alias.
+- Renamed `ItemMigration` to `ItemLayerBuilder` and `EnsureItemsMigratedAsync` to
+  `EnsureItemLayerAsync`. Neither was ever a migration: items are *derived* from
+  the tiles, so a fresh import has none until it runs. Calling it a migration had
+  it lumped in with code that was genuinely disposable.
+- Kept `SheetManifest.Seamless` and the slicer's sheet-level fallback. Checking
+  the real workspace found one `LastExport` still depending on it, so removing it
+  would have mis-cut a re-slice of that group — the assumption that "current
+  workspace means no legacy data" was wrong in exactly one place.
+- Verified by re-packing: 965 textures, byte-identical to the run before the
+  removals.
