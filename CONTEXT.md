@@ -212,9 +212,19 @@ files for a few minutes after that.
   via `tools/deploy.sh`, which re-stamps and verifies. If the button ever stops
   appearing, check that first, before the app code.
 - Detection does not wait on the browser's schedule: `interop.js` checks
-  immediately on registration, on `visibilitychange`, and every 30 minutes, and it
-  picks up a worker already `installing` or `waiting` when it attaches — the
+  immediately on registration, on `visibilitychange`, and on `UPDATE_POLL_MS`, and
+  it picks up a worker already `installing` or `waiting` when it attaches — the
   `updatefound` event can fire during `register()`, before the listener exists.
+- **`UPDATE_POLL_MS` is currently 15s, deliberately low** while the update path is
+  being exercised by hand. Pages serves with `max-age=600`, so a deploy can take ten
+  minutes to become visible and a long poll on top of that reads as "it never
+  arrived". 10 minutes is the sensible resting value.
+- Registration passes **`updateViaCache: "none"`**. The default (`"imports"`) keeps
+  the main script off the HTTP cache but allows imported ones from it — and the
+  import here is `service-worker-assets.js`, holding every integrity hash. A fresh
+  main script plus a cached manifest means every changed asset's hash is wrong and
+  install throws, silently. Note this only takes effect from the build *after* the
+  one a client is running, since it is set at registration time.
 - Manifest URLs are all **relative** (`start_url: "./"`), because the app is
   served at `/` in dev and `/retro-texture-studio/` in production.
 - The **update flow does work in the embedded browser pane** — a waiting worker,

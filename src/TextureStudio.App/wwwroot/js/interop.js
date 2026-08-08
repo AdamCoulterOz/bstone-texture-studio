@@ -1,5 +1,13 @@
 // Browser-side helpers: PNG codecs via canvas, clipboard, downloads, paste capture.
 // Core stays codec-free; everything crosses the interop boundary as raw RGBA or PNG bytes.
+
+// How often to ask whether a new build has been published. Deliberately short at the moment,
+// while the update path is still being exercised by hand: GitHub Pages serves with
+// max-age=600, so a deploy can take ten minutes to become visible, and a long poll on top of
+// that reads as "the update never arrived". Raise it once that stops being interesting —
+// 10 minutes matches the CDN's TTL and is the sensible resting value.
+const UPDATE_POLL_MS = 15 * 1000;
+
 window.studioInterop = {
   async decodePng(bytes) {
     const blob = new Blob([bytes], { type: "image/png" });
@@ -69,7 +77,14 @@ window.studioInterop = {
       return false;
     }
     try {
-      const registration = await navigator.serviceWorker.register("service-worker.js");
+      // updateViaCache "none" is load-bearing, not tidiness. The default, "imports", keeps the
+      // main script off the HTTP cache but lets imported ones come from it — and the imported
+      // script here is service-worker-assets.js, which holds the integrity hash of every asset.
+      // Pair a fresh main script with a cached manifest and every changed asset's hash is
+      // wrong, so install throws: the exact silent failure this whole flow already fell into
+      // once. GitHub Pages' max-age=600 makes that a real window, and polling often widens it.
+      const registration = await navigator.serviceWorker.register(
+        "service-worker.js", { updateViaCache: "none" });
       this._swRegistration = registration;
       const announce = () => dotnetRef.invokeMethodAsync("OnUpdateAvailable");
 
@@ -111,7 +126,7 @@ window.studioInterop = {
       const check = () => registration.update().catch(() => { /* offline is fine */ });
       check(); // don't wait on the browser's own schedule for the first look
       document.addEventListener("visibilitychange", () => { if (!document.hidden) check(); });
-      setInterval(check, 30 * 60 * 1000);
+      setInterval(check, UPDATE_POLL_MS);
       return true;
     } catch {
       return false; // unsupported, or blocked by the browser's storage settings
