@@ -17,8 +17,9 @@ its game and edition; everything downstream of tile decoding is game-agnostic.
 - Live: <https://adamcoulteroz.github.io/retro-texture-studio/> (published from `gh-pages`)
 - Listed as project 04 on <https://adamcoulteroz.github.io/>
 - Renamed from `bstone-texture-studio` when the game abstraction landed. GitHub
-  redirects the old repo URL; the old **Pages** URL does not redirect, so the
-  personal-site link needs the new one.
+  redirects the old repo URL; the old **Pages** URL does not, and now 404s. The
+  sibling `adamcoulteroz.github.io` repo carries the project-04 row, structured
+  data, keywords and sitemap entry — all four moved with the rename.
 
 Everything runs client-side. The workspace is a local folder chosen via the File
 System Access API; generation calls go straight from the browser to the model
@@ -141,10 +142,10 @@ git push -f https://github.com/AdamCoulterOz/retro-texture-studio.git gh-pages
 Poll `gh api repos/AdamCoulterOz/retro-texture-studio/pages/builds/latest --jq '.status'`
 until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
 
-> The base href **must** match the repo name. After the
-> `bstone-texture-studio` → `retro-texture-studio` rename the currently
-> published `gh-pages` still carries the old base href, so the live site is
-> broken until the next deploy.
+> The base href **must** match the repo name — a mismatch serves an index that
+> cannot find its own assets. This bit once already: the rename moved the Pages
+> URL (GitHub redirects renamed *repos*, not their Pages) and the published build
+> kept the old base href until it was redeployed.
 
 ## Domain Model
 
@@ -334,12 +335,9 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   without granting anything. A dev-only escape hatch (in-memory import, or a
   `?demo` flag opening a bundled read-only workspace) would close the remaining
   gap; that's a product change and needs the owner's call.
-- **The live site is stale and currently broken.** The published `gh-pages` build
-  still carries `<base href="/bstone-texture-studio/">` from before the rename,
-  and GitHub does not redirect Pages URLs. Fixed by the next deploy; the
-  personal-site link (project 04) needs the new URL too.
 - **No deploy CI** — revisit once the .NET SDK for this app is on a stable
-  channel rather than a preview band.
+  channel rather than a preview band. Until then every deploy is the manual
+  recipe above, so the published build silently lags `main` between releases.
 - **Content gaps** (owner's own work): non-Goldfire bosses; menus/VGA lumps are
   a separate engine system and out of scope.
 - Ideas parked: an `oxipng` optimization pass folded into `Pack`; a share package

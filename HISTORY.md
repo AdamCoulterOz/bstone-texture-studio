@@ -225,3 +225,7 @@ in the git log; this records *why* the shape of the project changed.
   is only a valid baseline if nothing has been applied since.
 - Hid the job toasts while the jobs popup is open: they dock in the same corner
   one layer above it, duplicating the list they cover.
+- Shipped all of the above: `main` pushed, a fresh `gh-pages` build deployed at
+  the new URL, and the sibling `adamcoulteroz.github.io` project-04 row, JSON-LD,
+  keywords and sitemap moved with it. The old Pages URL now 404s by design —
+  GitHub redirects renamed repos, not their Pages sites.
