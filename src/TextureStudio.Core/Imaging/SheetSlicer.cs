@@ -57,7 +57,7 @@ public static class SheetSlicer
             // Trim the antialiased blend between the cell and the sheet's boundary off
             // detected sprite boxes — those mixed pixels survive keying as a dark
             // hairline on the tile edges. Sprite art is inset, so nothing real is lost.
-            if (!usedFallback && TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite)
+            if (!usedFallback && cell.Kind == TileKind.Cutout)
             {
                 var erode = Math.Clamp((int)Math.Round((bx1 - bx0) * 0.004), 1, 6);
                 bx0 += erode;
@@ -79,9 +79,9 @@ public static class SheetSlicer
     /// art to square distorts it, and the matte padding keys away downstream.</summary>
     private static RgbaImage ToSquareTile(RgbaImage crop, SheetCell cell, int targetPx)
     {
-        var isSprite = TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite;
+        var isCutout = cell.Kind == TileKind.Cutout;
         var aspectSkew = Math.Abs(crop.Width - crop.Height) / (double)Math.Max(crop.Width, crop.Height);
-        if (!isSprite || aspectSkew < 0.02)
+        if (!isCutout || aspectSkew < 0.02)
         {
             return crop.Resample(targetPx, targetPx);
         }

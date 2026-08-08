@@ -3,23 +3,26 @@ using TextureStudio.Core.Model;
 
 namespace TextureStudio.Core.Games;
 
-/// <summary>An opened game asset container — the studio's read side of the source art.
-/// Indices are dense per kind (0..<see cref="WallCount"/>-1 and 0..<see cref="SpriteCount"/>-1);
-/// unused slots are reported by <see cref="IsEmpty"/> rather than skipped, because the engine
-/// addresses tiles by index and the pack file names have to match.</summary>
+/// <summary>One tile a game exposes: its id, and how the pipeline must treat it.</summary>
+/// <param name="Id">Short, opaque and stable — <c>w22</c>, <c>s53</c>. The app carries it
+/// around and never parses it; only the game knows what the characters mean.</param>
+/// <param name="Kind">Which pipeline treatment this tile needs.</param>
+public sealed record GameTile(string Id, TileKind Kind);
+
+/// <summary>An opened game asset container: the studio's read side of the source art.
+///
+/// <see cref="Tiles"/> is the game's own enumeration, already filtered to the slots that
+/// actually hold art. Its order is canonical — the studio sorts frames by position in this
+/// list, so "engine order" costs the game nothing to express beyond listing tiles in it.</summary>
 public interface IGameArchive
 {
     /// <summary>File the archive was opened from — shown in status lines and used for
     /// edition detection.</summary>
     string SourceName { get; }
 
-    int WallCount { get; }
+    /// <summary>Every tile the archive holds, in the game's own order.</summary>
+    IReadOnlyList<GameTile> Tiles { get; }
 
-    int SpriteCount { get; }
-
-    /// <summary>True for index slots the game leaves unused.</summary>
-    bool IsEmpty(TileRef tile);
-
-    /// <summary>Decode one tile to RGBA. Sprites carry alpha; walls are opaque.</summary>
-    RgbaImage Decode(TileRef tile);
+    /// <summary>Decode one tile to RGBA. Cutouts carry alpha; full frames are opaque.</summary>
+    RgbaImage Decode(string tileId);
 }

@@ -4,7 +4,11 @@ namespace TextureStudio.Core.Imaging;
 
 public enum ReservedCorner { None, BottomLeft, BottomRight, TopLeft, TopRight }
 
-public sealed record SheetCell(int CellIndex, string TileKey, int X, int Y, int W, int H, bool Seamless = false);
+/// <summary>One planned cell. <paramref name="Kind"/> travels with it so the slicer can
+/// treat cutouts differently without knowing which game minted the id.</summary>
+public sealed record SheetCell(
+    int CellIndex, string TileKey, int X, int Y, int W, int H, bool Seamless = false,
+    TileKind Kind = TileKind.Full);
 
 /// <summary>A planned sheet plus the empty grid slots left over — the app renders the
 /// platter directly from this so the preview always matches the composed sheet.</summary>

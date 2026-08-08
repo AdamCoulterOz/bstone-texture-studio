@@ -1094,13 +1094,12 @@
 
     private bool _sortAsc = true;
 
-    /// <summary>Sort the platter by frame id (walls first, then sprites, by index);
-    /// alternate presses flip the direction. Runs that stay contiguous survive.</summary>
+    /// <summary>Sort the platter into the game's own tile order; alternate presses flip the
+    /// direction. Runs that stay contiguous survive.</summary>
     private void SortCells(TileGroup group)
     {
         var sorted = group.TileKeys
-            .OrderBy(k => TileRef.Parse(k).Kind)
-            .ThenBy(k => TileRef.Parse(k).Index)
+            .OrderBy(State.TileOrder)
             .ToList();
         if (!_sortAsc)
         {

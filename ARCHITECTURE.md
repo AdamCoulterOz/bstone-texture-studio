@@ -47,6 +47,8 @@ the tiles are decoded is game-agnostic. One workspace targets one game
 | Concern | Interface member | Blake Stone |
 | --- | --- | --- |
 | Asset container | `OpenArchive` → `IGameArchive` | `VswapArchive` over `VswapFile` + `TileDecoders` + `BlakeStonePalette` |
+| Tile identity | `IGameArchive.Tiles` (`GameTile`), `KindOf`, `MigrateTileId` | `w22` walls (Full), `s53` sprites (Cutout) |
+| Workspace file names | `WorkspaceFileName` | `w12` → `wall_00012.png` |
 | Which release | `Editions`, `DetectEdition` | extension: `.BS6` full, `.BS1` shareware, `.VSI` Planet Strike |
 | Import UI | `ImportAccept`, `ImportHint` | `.BS6,.BS1,.VSI` |
 | Light/dark convention | `DefaultLightSource`, `AutoPairRole`, `AutoPairCategory`, `AutoPairDescription` | odd wall ← even sibling |
@@ -55,9 +57,30 @@ the tiles are decoded is game-agnostic. One workspace targets one game
 | Engine reference data | `Metadata` → `IGameMetadata` | `canonical-sprites.json`, `SPR_*` constant parsing |
 | Finding installed copies | `Locator` → `IGameLocator` | bounded walk for `AUDIOHED.*` markers, `VSWAP.*` art |
 
-`IGameArchive` is deliberately index-addressed (`WallCount`/`SpriteCount` +
-`IsEmpty`) rather than a filtered list, because the engine addresses tiles by
-index and the pack file names have to match those indices.
+### Tile identity and tile kind
+
+These are separate on purpose, because they answer different questions.
+
+**Identity** is an opaque short string the game mints — `w22`, `s53`. Nothing
+outside the plugin parses it; the app carries it as a key and asks the game
+whenever it needs to know anything. That is what lets `w`/`s` stay a naming
+convenience rather than a concept the pipeline understands.
+
+**Kind** (`TileKind`) is the *only* tile distinction the pipelines may make:
+
+| Kind | Meaning | Pipeline treatment |
+| --- | --- | --- |
+| `Full` | fills its cell, opaque | composed flush, resampled to the target square exactly, never keyed or placed |
+| `Cutout` | an object with transparency around it | composed inset over matte, content-box detected, alpha keyed, hand-placed |
+
+Add a kind only when some stage would otherwise have to ask *which game it is*.
+`SheetCell` carries its kind so `SheetSlicer` can branch without ever seeing an
+id, which is why Core/Imaging has no game dependency at all.
+
+`IGameArchive.Tiles` is a flat list of `GameTile(Id, Kind)` in the game's own
+order, already filtered to slots holding art. That order is canonical: the studio
+sorts an item's frames and the platter by position in it, so "engine order" costs
+the game nothing beyond listing tiles in it.
 
 `IGameMetadata` never fetches: it declares `AssetPath` (a wwwroot-relative JSON
 table) and the app hands the bytes to `Load`, which keeps Core HTTP-free. A

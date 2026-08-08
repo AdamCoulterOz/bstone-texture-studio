@@ -1,6 +1,5 @@
 using TextureStudio.Core.Formats;
 using TextureStudio.Core.Imaging;
-using TextureStudio.Core.Model;
 
 namespace TextureStudio.Core.Games.BlakeStone;
 
@@ -16,20 +15,43 @@ public sealed class VswapArchive : IGameArchive
     {
         _file = new VswapFile(bytes);
         SourceName = sourceName;
+        // Walls first, then sprites, each in engine index order — the studio treats this
+        // order as canonical when sorting an item's frames.
+        var tiles = new List<GameTile>();
+        for (var i = 0; i < _file.WallCount; i++)
+        {
+            if (!_file.IsEmptyChunk(i))
+            {
+                tiles.Add(new GameTile(BlakeStoneTiles.WallId(i), Model.TileKind.Full));
+            }
+        }
+        for (var i = 0; i < _file.SpriteCount; i++)
+        {
+            if (!_file.IsEmptyChunk(_file.SpriteStart + i))
+            {
+                tiles.Add(new GameTile(BlakeStoneTiles.SpriteId(i), Model.TileKind.Cutout));
+            }
+        }
+        Tiles = tiles;
     }
 
     public string SourceName { get; }
 
-    public int WallCount => _file.WallCount;
+    public IReadOnlyList<GameTile> Tiles { get; }
 
-    public int SpriteCount => _file.SpriteCount;
+    /// <summary>Sprite count as the archive holds it, including empty slots — the edition
+    /// heuristic counts addressable chunks, not the ones that happen to have art.</summary>
+    internal int RawSpriteCount => _file.SpriteCount;
 
-    public bool IsEmpty(TileRef tile) =>
-        _file.IsEmptyChunk(tile.Kind == TileKind.Wall
-            ? tile.Index
-            : _file.SpriteStart + tile.Index);
-
-    public RgbaImage Decode(TileRef tile) => tile.Kind == TileKind.Wall
-        ? TileDecoders.DecodeWall(_file.GetWallData(tile.Index), _palette)
-        : TileDecoders.DecodeSprite(_file.GetSpriteData(tile.Index), _palette);
+    public RgbaImage Decode(string tileId)
+    {
+        var index = BlakeStoneTiles.IndexOf(tileId);
+        if (index < 0)
+        {
+            throw new InvalidDataException($"'{tileId}' is not a Blake Stone tile id.");
+        }
+        return BlakeStoneTiles.IsWall(tileId)
+            ? TileDecoders.DecodeWall(_file.GetWallData(index), _palette)
+            : TileDecoders.DecodeSprite(_file.GetSpriteData(index), _palette);
+    }
 }

@@ -252,8 +252,20 @@ public sealed class StudioState(
     }
 
     public Project Project { get; private set; } = new();
-    public List<string> WallKeys { get; } = [];
-    public List<string> SpriteKeys { get; } = [];
+    /// <summary>Every tile the archive holds, in the game's own order. One list: what a
+    /// tile *is* belongs to the game, and the app only ever needs its kind.</summary>
+    public List<string> TileKeys { get; } = [];
+
+    /// <summary>Position of each tile in the game's enumeration — "engine order" for
+    /// sorting an item's frames, without the app knowing what an id means.</summary>
+    private readonly Dictionary<string, int> _tileOrder = [];
+
+    /// <summary>Workspace file name → tile id, so redraws on disk can be matched back.</summary>
+    private readonly Dictionary<string, string> _fileToTile = [];
+
+    /// <summary>Sort key for a tile; unknown tiles sort last rather than throwing.</summary>
+    public int TileOrder(string tileId) =>
+        _tileOrder.TryGetValue(tileId, out var order) ? order : int.MaxValue;
     public List<string> Selection { get; } = [];
     public TileGroup? ActiveGroup { get; set; }
     public bool ShowRedraw { get; set; }
@@ -535,7 +547,6 @@ public sealed class StudioState(
             ActiveGroupName = ActiveGroup?.Name,
             OpenTabJobIds = OpenTabs.Select(j => j.Id).ToList(),
             ActiveTabJobId = ActiveJob?.Id,
-            ItemsKind = ItemsKind.ToString(),
             ItemsCategory = CategoryFilter,
             ShowRedraw = ShowRedraw,
             HiddenNotifications = Project.Ui.HiddenNotifications,
@@ -608,7 +619,6 @@ public sealed class StudioState(
             ActiveGroup = group;
         }
         ShowRedraw = ui.ShowRedraw;
-        ItemsKind = ui.ItemsKind == nameof(TileKind.Wall) ? TileKind.Wall : TileKind.Sprite;
         CategoryFilter = ui.ItemsCategory ?? "";
         OpenTabs.Clear();
         foreach (var id in ui.OpenTabJobIds)
@@ -764,45 +774,32 @@ public sealed class StudioState(
         Archive = Game.OpenArchive(bytes, fileName);
         _sourceBytes = bytes;
         Project.SourceFileName = fileName;
-        WallKeys.Clear();
-        SpriteKeys.Clear();
+        TileKeys.Clear();
         _originals.Clear();
         _urlCache.Clear();
         _artBoxCache.Clear();
-        for (var i = 0; i < Archive.WallCount; i++)
+        _tileOrder.Clear();
+        _fileToTile.Clear();
+        foreach (var tile in Archive.Tiles)
         {
-            var tile = new TileRef(TileKind.Wall, i);
-            if (!Archive.IsEmpty(tile))
-            {
-                WallKeys.Add(tile.Key);
-            }
-        }
-        for (var i = 0; i < Archive.SpriteCount; i++)
-        {
-            var tile = new TileRef(TileKind.Sprite, i);
-            if (!Archive.IsEmpty(tile))
-            {
-                SpriteKeys.Add(tile.Key);
-            }
+            _tileOrder[tile.Id] = TileKeys.Count;
+            _fileToTile[Game.WorkspaceFileName(tile.Id)] = tile.Id;
+            TileKeys.Add(tile.Id);
         }
         SetStatus($"{Game.Name} — {Edition.Name} game data from {fileName}: " +
-                  $"{WallKeys.Count} walls, {SpriteKeys.Count} sprites.");
+                  $"{TileKeys.Count} tiles.");
         _ = DecodeAllAndPersistAsync(fileName);
     }
 
-    /// <summary>File-system-safe name for a tile key: wall:12 → wall_00012.png.</summary>
-    public static string FileNameFor(string key)
-    {
-        var tileRef = TileRef.Parse(key);
-        var prefix = tileRef.Kind == TileKind.Wall ? "wall" : "sprite";
-        return $"{prefix}_{tileRef.Index:D5}.png";
-    }
+    /// <summary>Where a tile's art lives inside the workspace — the game decides, so the
+    /// names survive an id-scheme change.</summary>
+    public string FileNameFor(string key) => Game.WorkspaceFileName(key);
 
     /// <summary>Decode every tile up front; when a workspace is open, persist the decoded
     /// originals (and the source archive itself) so the folder is a self-contained mirror.</summary>
     private async Task DecodeAllAndPersistAsync(string fileName)
     {
-        var allKeys = WallKeys.Concat(SpriteKeys).ToList();
+        var allKeys = TileKeys.ToList();
         var persist = workspace.IsOpen && !workspace.WritesBlocked;
         if (persist)
         {
@@ -853,7 +850,7 @@ public sealed class StudioState(
                 SetStatus($"Decoding tiles… {done}/{allKeys.Count}" + (persist ? " (writing workspace)" : ""));
             }
         }
-        SetStatus($"{Project.SourceFileName}: {WallKeys.Count} walls, {SpriteKeys.Count} sprites decoded" +
+        SetStatus($"{Project.SourceFileName}: {TileKeys.Count} tiles decoded" +
                   (workspace.IsOpen ? $" — workspace '{workspace.Name}' up to date." : "."));
         await EnsureItemsMigratedAsync();
     }
@@ -864,7 +861,7 @@ public sealed class StudioState(
         {
             return cached;
         }
-        var image = Archive!.Decode(TileRef.Parse(key));
+        var image = Archive!.Decode(key);
         _originals[key] = image;
         return image;
     }
@@ -1001,7 +998,7 @@ public sealed class StudioState(
             _ = EnsureMetadataAsync();
             return null;
         }
-        return metadata.Lookup(Edition, TileRef.Parse(key)) is { } tile
+        return metadata.Lookup(Edition, key) is { } tile
             ? new CanonicalDisplay(tile.Constant, tile.EngineName, tile.InGameLabel,
                 tile.TypeLabel, tile.FrameLabel, ArtBounds(key))
             : null;
@@ -1131,8 +1128,10 @@ public sealed class StudioState(
         Notify();
     }
 
-    private static TileKind ItemKind(TileItem item) =>
-        item.TileKeys.Count > 0 ? TileRef.Parse(item.TileKeys[0]).Kind : TileKind.Sprite;
+    /// <summary>An item's kind is its first frame's — frames of different kinds never share
+    /// an item, because the pipeline treats them differently end to end.</summary>
+    private TileKind ItemKind(TileItem item) =>
+        item.TileKeys.Count > 0 ? Game.KindOf(item.TileKeys[0]) : TileKind.Cutout;
 
     private TileItem MergeItems(List<TileItem> items)
     {
@@ -1141,14 +1140,14 @@ public sealed class StudioState(
         {
             if (ItemKind(source) != ItemKind(target))
             {
-                continue; // wall and sprite items never merge
+                continue; // items of different kinds never merge
             }
             target.TileKeys.AddRange(source.TileKeys);
             Project.Items.Remove(source);
         }
         target.TileKeys = target.TileKeys
             .Distinct()
-            .OrderBy(k => TileRef.Parse(k).Index)
+            .OrderBy(TileOrder)
             .ToList();
         target.IsAnimation = target.IsAnimation || target.TileKeys.Count > 1;
         return target;
@@ -1198,9 +1197,6 @@ public sealed class StudioState(
 
     // ---- UI display-size preferences (persisted with the layout) ----
 
-    /// <summary>Which kind the Items panel is showing — persisted with the project.</summary>
-    public TileKind ItemsKind { get; set; } = TileKind.Sprite;
-
     /// <summary>Items-grid zoom expressed as COLUMN COUNT — cells stretch to fill the
     /// panel width, so zoom detents by columns at the current width.</summary>
     public int ItemColumns { get; set; } = 5;
@@ -1223,7 +1219,7 @@ public sealed class StudioState(
         if (Project.Items.Count == 0)
         {
             await EnsureMetadataAsync();
-            var allKeys = WallKeys.Concat(SpriteKeys).ToList();
+            var allKeys = TileKeys.ToList();
             Project.Items = ItemMigration.Build(allKeys, Project.Meta, ActorFamilyFor);
             SetStatus($"Item layer built: {Project.Items.Count} items from {allKeys.Count} tiles.");
         }
@@ -1352,7 +1348,7 @@ public sealed class StudioState(
     /// <summary>The game's grouping key that collects one actor's frames into a single item;
     /// null means the tile stands alone.</summary>
     private string? ActorFamilyFor(string key) =>
-        Archive is null ? null : Game.Metadata?.ActorFamily(Edition, TileRef.Parse(key));
+        Archive is null ? null : Game.Metadata?.ActorFamily(Edition, key);
 
     /// <summary>Grey placeholder for an empty item name: the engine's own name for the first
     /// frame (statinfo name, in-game label, or humanized constant family).</summary>
@@ -1392,17 +1388,11 @@ public sealed class StudioState(
 
     /// <summary>Categories in use by items of one tile kind — the Walls/Sprites tabs filter
     /// their dropdown to these.</summary>
-    public IEnumerable<string> UsedCategories(TileKind kind) =>
-        Project.Items
-            .Where(i => i.TileKeys.Count > 0 && TileRef.Parse(i.TileKeys[0]).Kind == kind)
-            .Select(i => i.Category)
-            .Where(c => !string.IsNullOrEmpty(c))
-            .Distinct()
-            .OrderBy(c => c);
+
 
     /// <summary>The tile whose redraw is darkened for <paramref name="key"/> under the
     /// active game's own light/dark convention, unless the user pointed it elsewhere.</summary>
-    public string? DefaultLightSource(string key) => Game.DefaultLightSource(TileRef.Parse(key));
+    public string? DefaultLightSource(string key) => Game.DefaultLightSource(key);
 
     public void InvalidateDerivedDarks()
     {
@@ -1649,7 +1639,7 @@ public sealed class StudioState(
             {
                 original = DarkGenerator.Apply(original, Project.LightenParams);
             }
-            var isSprite = TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite;
+            var isSprite = Game.KindOf(cell.TileKey) == TileKind.Cutout;
             if (isSprite)
             {
                 // Show the model what we want back: sprite art inset with matte clearly
@@ -1766,7 +1756,7 @@ public sealed class StudioState(
             var purpose = meta?.GenerationAlias is { Length: > 0 } frameAlias ? frameAlias
                 : meta?.Purpose is { Length: > 0 } p ? p : FramePurposePlaceholder(cell.TileKey);
             sb.Append($"({row},{col}) {ItemName(item)} — {purpose}");
-            if (TileRef.Parse(cell.TileKey).Kind == TileKind.Sprite &&
+            if (Game.KindOf(cell.TileKey) == TileKind.Cutout &&
                 GetArtBox(cell.TileKey) is { } artBox)
             {
                 var original = GetOriginal(cell.TileKey);
@@ -1944,7 +1934,7 @@ public sealed class StudioState(
             SetStatus($"Slicing… {placements.Count + 1}/{job.Manifest.Cells.Count}");
             await Task.Delay(1);
             var result = SheetSlicer.SliceCell(sheet, background, job.Manifest, cell, SliceTargetPx);
-            var isSprite = TileRef.Parse(result.TileKey).Kind == TileKind.Sprite;
+            var isSprite = Game.KindOf(result.TileKey) == TileKind.Cutout;
             var keyMode = "-";
             var auto = SpritePlacement.Identity;
             double anchorX = 0.5, anchorY = 0.5;
@@ -2370,7 +2360,7 @@ public sealed class StudioState(
         return Project.Items
             .Where(item => item.TileKeys.Any(groupKeys.Contains))
             .SelectMany(item => item.TileKeys)
-            .Where(k => TileRef.Parse(k).Kind == TileKind.Sprite && HasRedraw(k))
+            .Where(k => Game.KindOf(k) == TileKind.Cutout && HasRedraw(k))
             .Distinct()
             .ToList();
     }
@@ -2562,7 +2552,7 @@ public sealed class StudioState(
                 }
             }
         }
-        if (group?.TileKeys.Any(k => TileRef.Parse(k).Kind == TileKind.Sprite) == true)
+        if (group?.TileKeys.Any(k => Game.KindOf(k) == TileKind.Cutout) == true)
         {
             prompt += "\nCells with a solid magenta background are transparent-sprite cells: " +
                       "keep their backgrounds EXACTLY solid flat magenta (#FF00FF) in your " +
@@ -2950,8 +2940,7 @@ public sealed class StudioState(
     {
         Archive = null;
         _sourceBytes = null;
-        WallKeys.Clear();
-        SpriteKeys.Clear();
+        TileKeys.Clear();
         _originals.Clear();
         _redraws.Clear();
         _derivedDarks.Clear();
@@ -2991,6 +2980,14 @@ public sealed class StudioState(
         if (projectJson is not null)
         {
             Project = JsonSerializer.Deserialize<Project>(projectJson, JsonOptions) ?? new Project();
+            // Before anything reads a tile id: the whole project is keyed by them, and the
+            // game owns their spelling. Idempotent, so it costs nothing on a current file.
+            var migrated = TileIdMigration.Apply(Project, Game);
+            if (migrated > 0)
+            {
+                SetStatus($"Migrated {migrated} tile ids to {Game.Name}'s current scheme.",
+                    "Workspace");
+            }
             ActiveGroup = Project.Groups.FirstOrDefault();
             RestoreJobHistory();
         }
@@ -3057,21 +3054,10 @@ public sealed class StudioState(
                   $"{Project.Groups.Count} groups, {redrawCount} redraws loaded.");
     }
 
-    private static string? KeyForFileName(string fileName)
-    {
-        var stem = Path.GetFileNameWithoutExtension(fileName);
-        var parts = stem.Split('_');
-        if (parts.Length == 2 && int.TryParse(parts[1], out var index))
-        {
-            return parts[0] switch
-            {
-                "wall" => new TileRef(TileKind.Wall, index).Key,
-                "sprite" => new TileRef(TileKind.Sprite, index).Key,
-                _ => null,
-            };
-        }
-        return null;
-    }
+    /// <summary>Tile id for a file in <c>redraws/</c>, resolved through the map the archive
+    /// built. Null for a file no loaded tile claims — a leftover from another game or an
+    /// older id scheme, which is skipped rather than guessed at.</summary>
+    private string? KeyForFileName(string fileName) => _fileToTile.GetValueOrDefault(fileName);
 
     /// <summary>Debounced project.json auto-save; a no-op without an open workspace.</summary>
     public void ScheduleAutoSave()
@@ -3126,11 +3112,11 @@ public sealed class StudioState(
     /// has not classified. Tiles the game has no opinion about are left alone.</summary>
     public void AutoPairTiles()
     {
-        foreach (var key in WallKeys.Concat(SpriteKeys))
+        foreach (var key in TileKeys)
         {
             var meta = GetMeta(key);
             if (meta.Role != PairRole.Unclassified ||
-                Game.AutoPairRole(TileRef.Parse(key)) is not { } role)
+                Game.AutoPairRole(key) is not { } role)
             {
                 continue;
             }

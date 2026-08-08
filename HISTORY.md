@@ -245,3 +245,27 @@ in the git log; this records *why* the shape of the project changed.
   when its parent calls `StateHasChanged`**. The gate sat frozen on its
   pre-check state through two attempted fixes before the cause was clear; both
   components now await one shared task in their own `OnInitializedAsync`.
+
+## 2026-08-08: Separate Tile Identity From Tile Kind
+
+- Split the two jobs `TileKind` was doing. Identity became an opaque game-minted
+  id (`w22`, `s53`) that nothing outside the plugin parses; kind became `Full` /
+  `Cutout`, the only tile distinction the pipelines are allowed to make.
+- Deleted `TileRef`. "Wall" and "sprite" were a Blake Stone concept sitting in
+  the middle of the app: 54 sites branched on them, and only about a third were
+  really about *behaviour* — the rest were file names, chunk ranges and pairing
+  rules that belonged to the game all along.
+- Dropped the Walls/Sprites tabs from the Items panel. Kinds drive the pipeline,
+  not browsing, so one list in the game's tile order with one flat category
+  dropdown — docked under the panel title and sticky.
+- Made `SheetCell` carry its kind so `SheetSlicer` branches without seeing an id,
+  which is what keeps Core/Imaging free of any game dependency.
+- Took enumeration order from `IGameArchive.Tiles` rather than a tile index, so
+  "engine order" is something the game expresses by listing, not something the
+  app computes.
+- Kept workspace file names at their pre-plugin spelling (`w12` →
+  `wall_00012.png`). An id scheme is not worth orphaning thousands of files for.
+- Migrated persisted ids everywhere a project keys tiles by them — metadata,
+  light-source links, items, group cells, seamless runs, revisions, the version
+  index, archived job manifests and placements. Verified by packing the real
+  workspace through the migration: 939 textures, byte-identical.

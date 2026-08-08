@@ -3,20 +3,11 @@
 @inject IJSRuntime JS
 
 <div class="pane grid-pane">
-    <div class="pane-header">
-        <div class="seg seg-text seg-fill kind-tabs">
-            <button class="seg-btn @(State.ItemsKind == TileKind.Wall ? "active" : "")"
-                    @onclick="() => SwitchKind(TileKind.Wall)">
-                Walls
-            </button>
-            <button class="seg-btn @(State.ItemsKind == TileKind.Sprite ? "active" : "")"
-                    @onclick="() => SwitchKind(TileKind.Sprite)">
-                Sprites
-            </button>
-        </div>
+    @* Docked under the panel's title bar and sticky, so items scroll beneath it. *@
+    <div class="pane-header category-bar">
         <select value="@State.CategoryFilter" @onchange="OnCategoryChanged">
             <option value="">All categories</option>
-            @foreach (var category in State.UsedCategories(State.ItemsKind))
+            @foreach (var category in State.UsedCategories())
             {
                 <option value="@category">@category</option>
             }
@@ -131,28 +122,17 @@
         State.SelectItem(null);
     }
 
-    private void SwitchKind(TileKind kind)
-    {
-        if (State.ItemsKind == kind)
-        {
-            return;
-        }
-        State.ItemsKind = kind;
-        State.CategoryFilter = "";
-        if (State.SelectedItem is not null)
-        {
-            State.SelectItem(null);
-        }
-    }
-
     private string FrameFor(TileItem item) =>
         item.IsAnimation && item.TileKeys.Count > 1
             ? item.TileKeys[_animationTick % item.TileKeys.Count]
             : item.TileKeys[0];
 
+    /// <summary>Every item, in the game's own tile order, filtered only by category — kinds
+    /// are a pipeline concern, not a browsing one.</summary>
     private IEnumerable<TileItem> VisibleItems() =>
-        State.Project.Items.Where(item =>
-            item.TileKeys.Count > 0 &&
-            TileRef.Parse(item.TileKeys[0]).Kind == State.ItemsKind &&
-            (string.IsNullOrEmpty(State.CategoryFilter) || item.Category == State.CategoryFilter));
+        State.Project.Items
+            .Where(item => item.TileKeys.Count > 0 &&
+                           (string.IsNullOrEmpty(State.CategoryFilter) ||
+                            item.Category == State.CategoryFilter))
+            .OrderBy(item => State.TileOrder(item.TileKeys[0]));
 }

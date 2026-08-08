@@ -1,5 +1,3 @@
-using TextureStudio.Core.Model;
-
 namespace TextureStudio.Core.Games;
 
 /// <summary>Read-only engine reference data for a game's tiles — sprite constants, the
@@ -22,11 +20,11 @@ public interface IGameMetadata
     void Load(byte[] json);
 
     /// <summary>Engine reference for one tile, or null when unknown.</summary>
-    CanonicalTile? Lookup(GameEdition edition, TileRef tile);
+    CanonicalTile? Lookup(GameEdition edition, string tileId);
 
     /// <summary>Grouping key that collects one actor's frames into a single item during the
     /// item-layer build; null means the tile stands alone.</summary>
-    string? ActorFamily(GameEdition edition, TileRef tile);
+    string? ActorFamily(GameEdition edition, string tileId);
 }
 
 /// <summary>Engine-derived facts about a single tile — all optional except the constant.</summary>

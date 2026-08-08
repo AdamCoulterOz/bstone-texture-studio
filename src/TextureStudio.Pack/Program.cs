@@ -33,6 +33,7 @@ for (var i = 1; i < args.Length - 1; i++)
 }
 var project = JsonSerializer.Deserialize<Project>(File.ReadAllBytes(Path.Combine(ws, "project.json")))!;
 var game = new GameCatalog().Get(project.GameId);
+TileIdMigration.Apply(project, game);
 var edition = game.Editions.FirstOrDefault(e =>
                   e.Id == editionArg || e.AssetDirectory == editionArg)
               ?? GameCatalog.ResolveEdition(game, project.EditionId, archive: null);
@@ -51,18 +52,20 @@ static void SavePng(RgbaImage img, string path)
         StbImageWriteSharp.ColorComponents.RedGreenBlueAlpha, stream);
 }
 
-string RedrawPath(string tileKey)
-{
-    var tileRef = TileRef.Parse(tileKey);
-    return Path.Combine(ws, "redraws",
-        $"{(tileRef.Kind == TileKind.Wall ? "wall" : "sprite")}_{tileRef.Index:D5}.png");
-}
+string RedrawPath(string tileId) =>
+    Path.Combine(ws, "redraws", game.WorkspaceFileName(tileId));
 
-// The redraws on disk are the art available to pack; the game turns them into a file list.
-var redrawKeys = Directory.GetFiles(Path.Combine(ws, "redraws"), "*.png")
-    .Select(file => Path.GetFileNameWithoutExtension(file).Split('_'))
-    .Select(stem => new TileRef(stem[0] == "wall" ? TileKind.Wall : TileKind.Sprite,
-        int.Parse(stem[1])).Key)
+// The redraws on disk are the art available to pack. Only the game can name them, so the
+// mapping is built by asking it for each id it knows rather than parsing the file names.
+var redrawFiles = Directory.GetFiles(Path.Combine(ws, "redraws"), "*.png")
+    .Select(Path.GetFileName)
+    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+var redrawKeys = project.Meta.Keys
+    .Concat(project.Items.SelectMany(i => i.TileKeys))
+    .Concat(project.Groups.SelectMany(g => g.TileKeys))
+    .Concat(project.TileVersions.Keys)
+    .Distinct(StringComparer.Ordinal)
+    .Where(id => redrawFiles.Contains(game.WorkspaceFileName(id)))
     .ToList();
 var plan = game.PlanPack(project, edition, redrawKeys);
 

@@ -51,20 +51,28 @@ public sealed class BlakeStoneGame : IGame
             ".VSI" => PlanetStrike,
             ".BS1" => AliensOfGoldShareware,
             ".BS6" => AliensOfGold,
-            _ => archive.SpriteCount <= SharewareSpriteCeiling ? AliensOfGoldShareware : AliensOfGold,
+            _ => archive is VswapArchive vswap && vswap.RawSpriteCount <= SharewareSpriteCeiling
+                ? AliensOfGoldShareware
+                : AliensOfGold,
         };
+
+    public TileKind KindOf(string tileId) => BlakeStoneTiles.KindOf(tileId);
+
+    public string WorkspaceFileName(string tileId) => BlakeStoneTiles.WorkspaceFileName(tileId);
+
+    public string MigrateTileId(string tileId) => BlakeStoneTiles.Migrate(tileId);
 
     /// <summary>Wall chunks alternate light (even) / dark (odd), so an odd wall's art is
     /// derived from its even sibling unless the user points it somewhere else. Sprites carry
     /// no such convention.</summary>
-    public string? DefaultLightSource(TileRef tile) =>
-        tile.Kind == TileKind.Wall && tile.Index % 2 == 1
-            ? new TileRef(TileKind.Wall, tile.Index - 1).Key
+    public string? DefaultLightSource(string tileId) =>
+        BlakeStoneTiles.IsWall(tileId) && BlakeStoneTiles.IndexOf(tileId) % 2 == 1
+            ? BlakeStoneTiles.WallId(BlakeStoneTiles.IndexOf(tileId) - 1)
             : null;
 
-    public PairRole? AutoPairRole(TileRef tile) =>
-        tile.Kind != TileKind.Wall ? null
-        : tile.Index % 2 == 0 ? PairRole.Light
+    public PairRole? AutoPairRole(string tileId) =>
+        !BlakeStoneTiles.IsWall(tileId) ? null
+        : BlakeStoneTiles.IndexOf(tileId) % 2 == 0 ? PairRole.Light
         : PairRole.DerivedDark;
 
     public string AutoPairCategory => "Surfaces";
@@ -73,9 +81,8 @@ public sealed class BlakeStoneGame : IGame
 
     /// <summary>The engine probes this path inside any of its search paths before falling
     /// back to the VSWAP art, so correctly-named PNGs are the whole pack format.</summary>
-    private static string PackPath(GameEdition edition, TileRef tile) =>
-        $"{edition.AssetDirectory}/" +
-        $"{(tile.Kind == TileKind.Wall ? "wall" : "sprite")}_{tile.Index:D8}.png";
+    private static string PackPath(GameEdition edition, string tileId) =>
+        $"{edition.AssetDirectory}/{BlakeStoneTiles.PackFileName(tileId)}";
 
     public PackPlan PlanPack(
         Project project, GameEdition edition, IReadOnlyCollection<string> redrawKeys)
@@ -96,14 +103,13 @@ public sealed class BlakeStoneGame : IGame
         var skipped = new List<string>();
         foreach (var key in candidates)
         {
-            var tile = TileRef.Parse(key);
             var meta = project.Meta.GetValueOrDefault(key);
             string? source = null;
             var transform = PackTransform.None;
 
             if (meta?.Role == PairRole.DerivedDark)
             {
-                var lightKey = meta.LightSourceKey ?? DefaultLightSource(tile);
+                var lightKey = meta.LightSourceKey ?? DefaultLightSource(key);
                 if (lightKey is not null && available.Contains(lightKey))
                 {
                     source = lightKey;
@@ -129,7 +135,7 @@ public sealed class BlakeStoneGame : IGame
             }
             else
             {
-                entries.Add(new PackEntry(PackPath(edition, tile), source, transform));
+                entries.Add(new PackEntry(PackPath(edition, key), source, transform));
             }
         }
         return new PackPlan(entries, skipped);

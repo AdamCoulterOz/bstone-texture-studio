@@ -188,7 +188,7 @@
         @if (State.Archive is { } archive)
         {
             <span class="hint wide">Loaded <code>@archive.SourceName</code> —
-                @State.WallKeys.Count walls, @State.SpriteKeys.Count sprites.</span>
+                @State.TileKeys.Count tiles.</span>
         }
         <span class="wide"><strong class="ref-heading">Installing a pack</strong></span>
         @{
@@ -488,7 +488,7 @@
                           @onclick="ToggleSidebar"><span class="chevron"><IconChevron Dir="down" Size="14" /></span></span>
                     Items
                     <span class="size-controls" @onclick:stopPropagation>
-                        @if (SelectedWallCount() >= 2)
+                        @if (PairableSelectedCount() >= 2)
                         {
                             <button title="@($"apply {State.Game.Name}'s {State.Game.AutoPairDescription} to unclassified tiles")"
                                     @onclick="State.AutoPairTiles">Auto-pair</button>
@@ -666,10 +666,12 @@
         ToggleDrawer(drawer);
     }
 
-    private int SelectedWallCount() =>
+    /// <summary>How many selected frames the game would pair — Auto-pair only appears when
+    /// there is something for it to do.</summary>
+    private int PairableSelectedCount() =>
         State.SelectedItems
             .SelectMany(i => i.TileKeys)
-            .Count(k => TileRef.Parse(k).Kind == TileKind.Wall);
+            .Count(k => State.Game.AutoPairRole(k) is not null);
 
     private void StepStyleRefLightbox(int direction)
     {

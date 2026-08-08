@@ -4,6 +4,7 @@
 using System.Text.Json;
 using StbImageSharp;
 using StbImageWriteSharp;
+using TextureStudio.Core.Games;
 using TextureStudio.Core.Imaging;
 using TextureStudio.Core.Model;
 
@@ -15,6 +16,8 @@ if (args.Length < 1)
 var ws = args[0];
 var targetPx = args.Length > 1 ? int.Parse(args[1]) : 512;
 var project = JsonSerializer.Deserialize<Project>(File.ReadAllBytes(Path.Combine(ws, "project.json")))!;
+var game = new GameCatalog().Get(project.GameId);
+TileIdMigration.Apply(project, game);
 
 static string Safe(string name) =>
     string.Join("-", name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
@@ -33,12 +36,7 @@ static void SavePng(RgbaImage img, string path)
         StbImageWriteSharp.ColorComponents.RedGreenBlueAlpha, stream);
 }
 
-static string FileNameFor(string key)
-{
-    var tileRef = TileRef.Parse(key);
-    var prefix = tileRef.Kind == TileKind.Wall ? "wall" : "sprite";
-    return $"{prefix}_{tileRef.Index:D5}.png";
-}
+string FileNameFor(string tileId) => game.WorkspaceFileName(tileId);
 
 var generations = Directory.GetFiles(Path.Combine(ws, "generations"), "*-import.png")
     .Concat(Directory.GetFiles(Path.Combine(ws, "generations"), "*-gen.png"))
@@ -62,7 +60,7 @@ foreach (var file in generations)
     {
         var image = result.Image;
         var mode = "-";
-        if (TileRef.Parse(result.TileKey).Kind == TileKind.Sprite)
+        if (game.KindOf(result.TileKey) == TileKind.Cutout)
         {
             mode = AlphaKeyer.KeyAuto(image);
             // Parity with the app: refit small objects into the original art's footprint.

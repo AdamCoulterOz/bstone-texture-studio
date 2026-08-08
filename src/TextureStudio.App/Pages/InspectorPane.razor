@@ -272,7 +272,7 @@
 }
 
 @code {
-    private static bool IsSpriteKey(string key) => TileRef.Parse(key).Kind == TileKind.Sprite;
+    private bool IsCutoutKey(string key) => State.Game.KindOf(key) == TileKind.Cutout;
 
     // Alias fields reveal behind the incognito toggle; a non-empty alias always shows.
     private readonly HashSet<object> _aliasOpen = [];

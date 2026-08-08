@@ -30,23 +30,24 @@ public class CoreTests
         }
         var game = new BlakeStoneGame();
         var archive = game.OpenArchive(File.ReadAllBytes(VswapPath), "VSWAP.BS6");
-        Assert.Equal(202, archive.WallCount);
-        Assert.True(archive.SpriteCount > 300, $"sprite count {archive.SpriteCount}");
+        var walls = archive.Tiles.Where(t => t.Kind == TileKind.Full).ToList();
+        var cutouts = archive.Tiles.Where(t => t.Kind == TileKind.Cutout).ToList();
+        Assert.Equal(202, walls.Count);
+        Assert.True(cutouts.Count > 300, $"cutout count {cutouts.Count}");
         Assert.Equal(BlakeStoneGame.AliensOfGold, game.DetectEdition(archive));
-        var wall = archive.Decode(new TileRef(TileKind.Wall, 4));
+        // Ids are the game's own short form, and walls come first in engine order.
+        Assert.Equal("w0", archive.Tiles[0].Id);
+        Assert.StartsWith("s", cutouts[0].Id);
+        var wall = archive.Decode("w4");
         Assert.Equal(64, wall.Width);
         // Wall 4 is the orange brick texture — assert it is not a flat color.
         Assert.True(Enumerable.Range(0, wall.Pixels.Length / 4)
             .Select(i => wall.Pixels[i * 4])
             .Distinct().Count() > 8);
-        // Decode every sprite; malformed posts would throw.
-        for (var i = 1; i < archive.SpriteCount; i++)
+        // Decode every cutout; malformed posts would throw.
+        foreach (var tile in cutouts)
         {
-            var tile = new TileRef(TileKind.Sprite, i);
-            if (!archive.IsEmpty(tile))
-            {
-                Assert.Equal(64, archive.Decode(tile).Width);
-            }
+            Assert.Equal(64, archive.Decode(tile.Id).Width);
         }
     }
 
@@ -422,10 +423,91 @@ public class CoreTests
     }
 
     [Fact]
-    public void TileRef_RoundTripsKeys()
+    public void BlakeStone_MapsItsOwnTileIds()
     {
-        Assert.Equal("wall:12", new TileRef(TileKind.Wall, 12).Key);
-        Assert.Equal(new TileRef(TileKind.Sprite, 7), TileRef.Parse("sprite:7"));
+        var game = new BlakeStoneGame();
+        // Kind is the only thing the pipelines may read off a tile.
+        Assert.Equal(TileKind.Full, game.KindOf("w12"));
+        Assert.Equal(TileKind.Cutout, game.KindOf("s107"));
+        // Workspace file names keep the pre-plugin spelling so existing folders still match.
+        Assert.Equal("wall_00012.png", game.WorkspaceFileName("w12"));
+        Assert.Equal("sprite_00107.png", game.WorkspaceFileName("s107"));
+    }
+
+    [Fact]
+    public void MigrateTileId_RewritesLegacyIdsAndLeavesCurrentOnesAlone()
+    {
+        var game = new BlakeStoneGame();
+        Assert.Equal("w12", game.MigrateTileId("wall:12"));
+        Assert.Equal("s107", game.MigrateTileId("sprite:107"));
+        // Idempotent — it runs on every load.
+        Assert.Equal("w12", game.MigrateTileId(game.MigrateTileId("wall:12")));
+        Assert.Equal("s107", game.MigrateTileId("s107"));
+        // Anything it does not recognise passes through untouched rather than being guessed at.
+        Assert.Equal("mystery:1", game.MigrateTileId("mystery:1"));
+        Assert.Equal("wall:notanumber", game.MigrateTileId("wall:notanumber"));
+    }
+
+    [Fact]
+    public void TileIdMigration_RewritesEveryPlaceAProjectKeysTilesBy()
+    {
+        // A project shaped like a real one: metadata, an item, a group with a seamless run
+        // and a revision, a per-tile version index, and an archived job with a manifest and
+        // a placement. Missing any one of these detaches art from its curation.
+        var project = new Project
+        {
+            Meta =
+            {
+                ["wall:12"] = new TileMeta { Name = "Brick" },
+                ["wall:13"] = new TileMeta { Role = PairRole.DerivedDark, LightSourceKey = "wall:12" },
+            },
+            Items = { new TileItem { Name = "Brick", TileKeys = ["wall:12", "wall:13"] } },
+            Groups =
+            {
+                new TileGroup
+                {
+                    Name = "Walls",
+                    TileKeys = ["wall:12", "wall:13", "sprite:7"],
+                    SeamlessRuns = [["wall:12", "wall:13"]],
+                    ApprovedRefExcluded = ["sprite:7"],
+                    Revisions = [new GroupRevisionInfo { Id = "r1", TileKeys = ["wall:12"] }],
+                    LastExport = new SheetManifest(512, 512, 2, 1, 256, 8, false,
+                        ReservedCorner.None,
+                        [new SheetCell(0, "wall:12", 0, 0, 256, 256)]),
+                },
+            },
+            TileVersions = { ["sprite:7"] = [new TileVersionInfo { Id = "v1", File = "x.png" }] },
+            JobHistory =
+            {
+                new JobRecord
+                {
+                    Id = "j1",
+                    Manifest = new SheetManifest(512, 512, 2, 1, 256, 8, false,
+                        ReservedCorner.None,
+                        [new SheetCell(0, "sprite:7", 0, 0, 256, 256)]),
+                    Placements = [new PlacementRecord { TileKey = "sprite:7" }],
+                },
+            },
+        };
+
+        var changed = TileIdMigration.Apply(project, new BlakeStoneGame());
+
+        Assert.Equal(3, changed); // wall:12, wall:13, sprite:7
+        Assert.Equal(["w12", "w13"], project.Meta.Keys.Order());
+        Assert.Equal("w12", project.Meta["w13"].LightSourceKey);
+        Assert.Equal(["w12", "w13"], project.Items[0].TileKeys);
+        var group = project.Groups[0];
+        Assert.Equal(["w12", "w13", "s7"], group.TileKeys);
+        Assert.Equal(["w12", "w13"], group.SeamlessRuns[0]);
+        Assert.Equal(["s7"], group.ApprovedRefExcluded);
+        Assert.Equal(["w12"], group.Revisions[0].TileKeys);
+        Assert.Equal("w12", group.LastExport!.Cells[0].TileKey);
+        Assert.Equal(["s7"], project.TileVersions.Keys);
+        Assert.Equal("s7", project.JobHistory[0].Manifest!.Cells[0].TileKey);
+        Assert.Equal("s7", project.JobHistory[0].Placements[0].TileKey);
+
+        // Running it again changes nothing — it happens on every load.
+        Assert.Equal(0, TileIdMigration.Apply(project, new BlakeStoneGame()));
     }
 
     [Fact]
@@ -492,12 +574,12 @@ public class CoreTests
     public void BlakeStone_PairsOddWallsToTheirEvenSibling()
     {
         var game = new BlakeStoneGame();
-        Assert.Equal("wall:12", game.DefaultLightSource(new TileRef(TileKind.Wall, 13)));
-        Assert.Null(game.DefaultLightSource(new TileRef(TileKind.Wall, 12)));
-        Assert.Null(game.DefaultLightSource(new TileRef(TileKind.Sprite, 13)));
-        Assert.Equal(PairRole.Light, game.AutoPairRole(new TileRef(TileKind.Wall, 12)));
-        Assert.Equal(PairRole.DerivedDark, game.AutoPairRole(new TileRef(TileKind.Wall, 13)));
-        Assert.Null(game.AutoPairRole(new TileRef(TileKind.Sprite, 12)));
+        Assert.Equal("w12", game.DefaultLightSource("w13"));
+        Assert.Null(game.DefaultLightSource("w12"));
+        Assert.Null(game.DefaultLightSource("s13"));
+        Assert.Equal(PairRole.Light, game.AutoPairRole("w12"));
+        Assert.Equal(PairRole.DerivedDark, game.AutoPairRole("w13"));
+        Assert.Null(game.AutoPairRole("s12"));
     }
 
     [Fact]
@@ -506,9 +588,9 @@ public class CoreTests
         var game = new BlakeStoneGame();
         var project = new Project();
 
-        var aog = game.PlanPack(project, BlakeStoneGame.AliensOfGold, ["wall:12"]);
+        var aog = game.PlanPack(project, BlakeStoneGame.AliensOfGold, ["w12"]);
         Assert.Equal("aog/wall_00000012.png", Assert.Single(aog.Entries).Path);
-        var ps = game.PlanPack(project, BlakeStoneGame.PlanetStrike, ["sprite:107"]);
+        var ps = game.PlanPack(project, BlakeStoneGame.PlanetStrike, ["s107"]);
         Assert.Equal("ps/sprite_00000107.png", Assert.Single(ps.Entries).Path);
         // Both Aliens of Gold releases share one mod-dir folder.
         Assert.Equal(BlakeStoneGame.AliensOfGold.AssetDirectory,
@@ -524,34 +606,34 @@ public class CoreTests
             Meta =
             {
                 // A light wall, its derived dark sibling (no art of its own)…
-                ["wall:12"] = new TileMeta { Role = PairRole.Light },
-                ["wall:13"] = new TileMeta { Role = PairRole.DerivedDark },
+                ["w12"] = new TileMeta { Role = PairRole.Light },
+                ["w13"] = new TileMeta { Role = PairRole.DerivedDark },
                 // …an alternate dark, which is drawn light and darkens itself…
-                ["wall:20"] = new TileMeta { Role = PairRole.AlternateDark },
+                ["w20"] = new TileMeta { Role = PairRole.AlternateDark },
                 // …and a derived dark whose light source was never redrawn.
-                ["wall:41"] = new TileMeta { Role = PairRole.DerivedDark },
+                ["w41"] = new TileMeta { Role = PairRole.DerivedDark },
             },
         };
 
         var plan = game.PlanPack(project, BlakeStoneGame.AliensOfGold,
-            ["wall:12", "wall:20", "sprite:7"]);
+            ["w12", "w20", "s7"]);
 
         var byPath = plan.Entries.ToDictionary(e => e.Path);
         Assert.Equal(4, plan.Entries.Count);
         // The light wall and the plain sprite pack as drawn.
-        Assert.Equal(("wall:12", PackTransform.None),
+        Assert.Equal(("w12", PackTransform.None),
             (byPath["aog/wall_00000012.png"].SourceTileKey, byPath["aog/wall_00000012.png"].Transform));
-        Assert.Equal(("sprite:7", PackTransform.None),
+        Assert.Equal(("s7", PackTransform.None),
             (byPath["aog/sprite_00000007.png"].SourceTileKey, byPath["aog/sprite_00000007.png"].Transform));
         // The derived dark has no art of its own — it is darkened from its light sibling.
-        Assert.Equal(("wall:12", PackTransform.Darken),
+        Assert.Equal(("w12", PackTransform.Darken),
             (byPath["aog/wall_00000013.png"].SourceTileKey, byPath["aog/wall_00000013.png"].Transform));
         // The alternate dark darkens itself.
-        Assert.Equal(("wall:20", PackTransform.Darken),
+        Assert.Equal(("w20", PackTransform.Darken),
             (byPath["aog/wall_00000020.png"].SourceTileKey, byPath["aog/wall_00000020.png"].Transform));
         Assert.Equal(2, plan.TransformedCount);
         // The one with no usable art is reported rather than silently dropped.
-        Assert.Equal("wall:41", Assert.Single(plan.SkippedTileKeys));
+        Assert.Equal("w41", Assert.Single(plan.SkippedTileKeys));
     }
 
     [Fact]
@@ -582,7 +664,7 @@ public class CoreTests
     public void BlakeStoneMetadata_ReadsTheShippedTableShape()
     {
         var metadata = new BlakeStoneMetadata();
-        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1)));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, "s1"));
         metadata.Load(System.Text.Encoding.UTF8.GetBytes(
             """
             {"aog_full":{
@@ -592,24 +674,24 @@ public class CoreTests
             """));
         Assert.True(metadata.IsLoaded);
 
-        var puddle = metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1));
+        var puddle = metadata.Lookup(BlakeStoneGame.AliensOfGold, "s1");
         Assert.Equal("Water Puddle", puddle!.EngineName);
         Assert.Equal("pickup: water puddle", puddle.TypeLabel);
         // Statics stand alone rather than joining an actor family.
-        Assert.Null(metadata.ActorFamily(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1)));
+        Assert.Null(metadata.ActorFamily(BlakeStoneGame.AliensOfGold, "s1"));
 
-        var mutant = metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 2));
+        var mutant = metadata.Lookup(BlakeStoneGame.AliensOfGold, "s2");
         Assert.Equal("Mutant Human", mutant!.InGameLabel);
         Assert.Equal("walk 2 · rotation 7/8", mutant.FrameLabel);
         Assert.Equal("MUTHUM1",
-            metadata.ActorFamily(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 2)));
+            metadata.ActorFamily(BlakeStoneGame.AliensOfGold, "s2"));
 
         Assert.Equal("blocking object",
-            metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 3))!.TypeLabel);
+            metadata.Lookup(BlakeStoneGame.AliensOfGold, "s3")!.TypeLabel);
         // Walls, unknown indices and other editions have no reference data.
-        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Wall, 1)));
-        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 99)));
-        Assert.Null(metadata.Lookup(BlakeStoneGame.PlanetStrike, new TileRef(TileKind.Sprite, 1)));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, "w1"));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, "s99"));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.PlanetStrike, "s1"));
     }
 
     [Fact]
@@ -618,16 +700,17 @@ public class CoreTests
         var metadata = new BlakeStoneMetadata();
         metadata.Load(System.Text.Encoding.UTF8.GetBytes("not json"));
         Assert.True(metadata.IsLoaded);
-        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1)));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, "s1"));
     }
 
     private sealed class FakeArchive(string sourceName, int spriteCount) : IGameArchive
     {
         public string SourceName => sourceName;
-        public int WallCount => 202;
-        public int SpriteCount => spriteCount;
-        public bool IsEmpty(TileRef tile) => false;
-        public RgbaImage Decode(TileRef tile) => new(64, 64);
+
+        public IReadOnlyList<GameTile> Tiles { get; } =
+            [.. Enumerable.Range(0, spriteCount).Select(i => new GameTile($"s{i}", TileKind.Cutout))];
+
+        public RgbaImage Decode(string tileId) => new(64, 64);
     }
 
     // ---- Locator ----

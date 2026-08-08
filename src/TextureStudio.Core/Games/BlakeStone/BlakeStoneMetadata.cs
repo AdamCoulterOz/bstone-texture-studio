@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using TextureStudio.Core.Model;
 
 namespace TextureStudio.Core.Games.BlakeStone;
 
@@ -35,9 +34,9 @@ public sealed partial class BlakeStoneMetadata : IGameMetadata
         IsLoaded = true;
     }
 
-    public CanonicalTile? Lookup(GameEdition edition, TileRef tile)
+    public CanonicalTile? Lookup(GameEdition edition, string tileId)
     {
-        if (Find(edition, tile) is not { } entry)
+        if (Find(edition, tileId) is not { } entry)
         {
             return null;
         }
@@ -47,9 +46,9 @@ public sealed partial class BlakeStoneMetadata : IGameMetadata
     /// <summary>Actor-family grouping key for unnamed sprites: the constant with its
     /// animation suffix stripped (SPR_GREEN_OOZE2 → GREEN_OOZE); null for walls and
     /// statics, which stand alone unless the user names them.</summary>
-    public string? ActorFamily(GameEdition edition, TileRef tile)
+    public string? ActorFamily(GameEdition edition, string tileId)
     {
-        if (Find(edition, tile) is not { } entry)
+        if (Find(edition, tileId) is not { } entry)
         {
             return null;
         }
@@ -62,10 +61,13 @@ public sealed partial class BlakeStoneMetadata : IGameMetadata
         return match.Success ? match.Groups[1].Value.TrimEnd('_') : constant;
     }
 
-    private Entry? Find(GameEdition edition, TileRef tile) =>
-        tile.Kind == TileKind.Sprite &&
+    /// <summary>Only sprites have reference data — the tables are keyed by sprite index,
+    /// and walls carry no engine constants at all.</summary>
+    private Entry? Find(GameEdition edition, string tileId) =>
+        !BlakeStoneTiles.IsWall(tileId) &&
+        BlakeStoneTiles.IndexOf(tileId) is var index && index >= 0 &&
         _table.TryGetValue(edition.Id, out var byIndex) &&
-        byIndex.TryGetValue(tile.Index.ToString(), out var entry)
+        byIndex.TryGetValue(index.ToString(), out var entry)
             ? entry
             : null;
 

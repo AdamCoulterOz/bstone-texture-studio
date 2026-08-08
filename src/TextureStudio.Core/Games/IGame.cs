@@ -42,12 +42,25 @@ public interface IGame
     /// one explicitly.</summary>
     GameEdition DetectEdition(IGameArchive archive);
 
-    /// <summary>The tile whose (redrawn) art is darkened to produce <paramref name="tile"/>
+    /// <summary>How the pipelines must treat a tile. Derived from the id alone, so it still
+    /// answers with no archive open — the CLIs only ever have <c>project.json</c>.</summary>
+    TileKind KindOf(string tileId);
+
+    /// <summary>File name for a tile's art inside the workspace (<c>originals/</c>,
+    /// <c>redraws/</c>). Stable forever: changing it orphans every file already written.</summary>
+    string WorkspaceFileName(string tileId);
+
+    /// <summary>The tile whose (redrawn) art is darkened to produce <paramref name="tileId"/>
     /// under the engine's own convention, or null when there is no default pairing.</summary>
-    string? DefaultLightSource(TileRef tile);
+    string? DefaultLightSource(string tileId);
 
     /// <summary>Role Auto-pair assigns to an unclassified tile; null leaves it alone.</summary>
-    PairRole? AutoPairRole(TileRef tile);
+    PairRole? AutoPairRole(string tileId);
+
+    /// <summary>Rewrite a tile id persisted by an older release, or return it unchanged.
+    /// Runs on every load and must be idempotent — a workspace is years of curation keyed
+    /// by these strings, so a wrong answer silently detaches art from its metadata.</summary>
+    string MigrateTileId(string tileId);
 
     /// <summary>Category Auto-pair moves newly paired tiles into.</summary>
     string AutoPairCategory { get; }

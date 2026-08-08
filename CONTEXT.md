@@ -45,7 +45,7 @@ provider with the user's own key.
    baking. Any tile can be unticked to keep its existing art.
 7. **Pack** — the *Pack* button in the title bar writes `<workspace>/pack/…` in
    whatever layout the game asks for (Blake Stone:
-   `pack/aog/{wall|sprite}_<id:08>.png`); `TextureStudio.Pack <workspace>` does
+   `pack/aog/{wall|sprite}_<id:08>.png`, mapped from `w`/`s` ids); `TextureStudio.Pack <workspace>` does
    the same from the CLI. Point the source port at that folder — the Game drawer
    links to its download and its own mod-loading docs.
 
@@ -58,8 +58,8 @@ different engine system, out of scope for external textures).
 | Path | Role |
 | --- | --- |
 | `src/TextureStudio.Core/` | Pure logic, no UI. Game plugins, sheet compose/slice, alpha keying, dark generation, model clients. |
-| `src/TextureStudio.Core/Games/` | `IGame` / `IGameArchive` / `IGameMetadata` / `IGameLocator` / `IDirectoryTree`, plus `GameEdition`, `PackPlan` and `GameCatalog` — everything a source game dictates. See ARCHITECTURE.md for the member-by-member map. |
-| `src/TextureStudio.Core/Games/BlakeStone/` | The one shipped plugin: `BlakeStoneGame` (editions, pairing, pack plan, install links), `VswapArchive`, `BlakeStonePalette`, `BlakeStoneMetadata`, `BlakeStoneLocator`. Ported from bstone, hence GPL. |
+| `src/TextureStudio.Core/Games/` | `IGame` / `IGameArchive` / `IGameMetadata` / `IGameLocator` / `IDirectoryTree`, plus `GameTile`, `GameEdition`, `PackPlan` and `GameCatalog` — everything a source game dictates. See ARCHITECTURE.md for the member-by-member map. |
+| `src/TextureStudio.Core/Games/BlakeStone/` | The one shipped plugin: `BlakeStoneGame` (editions, pairing, pack plan, install links), `BlakeStoneTiles` (the only place `w`/`s` ids mean anything), `VswapArchive`, `BlakeStonePalette`, `BlakeStoneMetadata`, `BlakeStoneLocator`. Ported from bstone, hence GPL. |
 | `src/TextureStudio.App/Services/ContentSearchService.cs` | The read-only folder granted for the locator to search — an `IDirectoryTree` over a second File System Access handle, remembered separately from the workspace. |
 | `src/TextureStudio.App/Services/BrowserSupport.cs` + `Pages/BrowserGate.razor` | The capability gate: which browser APIs the studio requires, and the blocking overlay shown when one is absent. |
 | `src/TextureStudio.Core/Formats/` | VSWAP container + wall/sprite codecs — shared by the whole Wolfenstein family, so they sit outside any one plugin. |
@@ -70,6 +70,7 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.Core/Generation/GeminiImageClient.cs` | Gemini image API (`thinkingLevel`, `topP`, defensive response parsing). |
 | `src/TextureStudio.Core/Generation/OpenAiImageClient.cs` | OpenAI GPT Image API (`/v1/images/edits` with reference inputs, quality parameter). |
 | `src/TextureStudio.Core/Model/ProjectModel.cs` | `Project` and everything persisted in `project.json`. |
+| `src/TextureStudio.Core/Model/TileIdMigration.cs` | Rewrites tile ids from an older release everywhere a project keys tiles by them — metadata, light-source links, items, groups, runs, revisions, versions, job manifests, placements. |
 | `src/TextureStudio.App/Services/StudioState.cs` | ~3k lines: the single app state object. Game/edition resolution, prompt building, job lifecycle, slicing orchestration, URL caches, workspace I/O, persistence. |
 | `src/TextureStudio.App/Pages/GroupPane.razor` | The main area: tabs, group grid (platter), results views, placement tuning. The busiest UI file. |
 | `src/TextureStudio.App/Pages/Home.razor` | Shell: topbar, settings drawers, sidebar/props columns, statusbar. |
@@ -78,7 +79,7 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.App/wwwroot/js/interop.js` | All pixel work that must not run in C# (`composeSheet`, `composePngGrid`, `pngPreviewDataUrl`, `annotatePng`, `imageSize`, `copyText`, `autoSizePrompt`), plus two File System Access blocks: the read-write workspace (`ws*`) and the read-only content search root (`content*`). |
 | `src/TextureStudio.Pack/` | CLI: workspace → mod dir, from the game's `PlanPack`. `pack <workspace> [out-dir] [--edition <id>]`. |
 | `src/TextureStudio.Rekey/` | CLI: re-slice archived generations against `project.json` manifests. Game-agnostic — it only touches workspace files. |
-| `tests/TextureStudio.Core.Tests/` | 35 tests. The real-data archive test skips when game data is absent (`BSTONE_VSWAP` env override); the locator tests run against an in-memory `IDirectoryTree`. |
+| `tests/TextureStudio.Core.Tests/` | 37 tests. The real-data archive test skips when game data is absent (`BSTONE_VSWAP` env override); the locator tests run against an in-memory `IDirectoryTree`. |
 
 ### Workspace layout (user data, not in this repo)
 
@@ -157,7 +158,14 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
 - **Category → Item → Frame.** `TileItem` owns Name/Category/IsAnimation and an
   ordered list of frame keys; per-frame `TileMeta` holds Purpose (the
   differentiator only), Role, LightSourceKey, and prompt alias.
-- **Tile keys** are `wall:12` / `sprite:107` (`TileRef`).
+- **Tile ids** are opaque short strings minted by the game — `w22`, `s53`. Only
+  the plugin knows what the characters mean; everything else treats them as keys
+  and asks `IGame` for anything it needs. `TileIdMigration` rewrites ids
+  persisted by an older release on every load, idempotently.
+- **Tile kinds** (`TileKind.Full` / `TileKind.Cutout`) are the only tile
+  distinction the pipelines make: fills-its-cell-and-opaque versus
+  object-with-transparency. Walls and sprites are a *Blake Stone* concept and
+  live entirely in its plugin.
 - **Groups** (`TileGroup`) are sheets: ordered `TileKeys` plus `SeamlessRuns`
   (each an ordered *contiguous* slice of TileKeys rendered butted together).
 - **Jobs** (`GenerationJob`) are generate/import/revise runs with states
@@ -178,6 +186,10 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
 
 ### Games
 
+- **The Items panel does not split by kind.** Kinds drive the pipeline, not
+  browsing, so there is one item list in the game's tile order and one flat
+  category dropdown. A game whose tiles need different handling expresses that
+  as a `TileKind`, never as a UI tab.
 - **One game per workspace, and it locks once there is content.** Tile ids mean
   different things in different games, so `SetGame` refuses once anything is
   imported or curated. Changing game = new workspace.

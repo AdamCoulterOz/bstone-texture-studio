@@ -2,22 +2,24 @@ using TextureStudio.Core.Imaging;
 
 namespace TextureStudio.Core.Model;
 
-public enum TileKind { Wall, Sprite }
-
-/// <summary>Stable identity for a tile: "wall:12" or "sprite:107". Used as dictionary keys
-/// and in sheet manifests.</summary>
-public readonly record struct TileRef(TileKind Kind, int Index)
+/// <summary>How a tile must be treated by the generation and slicing pipelines — the only
+/// tile distinction those pipelines are allowed to make.
+///
+/// Tile *identity* is deliberately not part of this: an id is an opaque short string minted
+/// by the game (<c>w22</c>, <c>s53</c>), and only the game knows what it means. Kinds exist
+/// because the pipeline genuinely has to behave differently, so add one only when some stage
+/// would otherwise have to ask which game it is.</summary>
+public enum TileKind
 {
-    public string Key => $"{(Kind == TileKind.Wall ? "wall" : "sprite")}:{Index}";
+    /// <summary>Art fills its cell edge to edge and is fully opaque — a wall, floor or
+    /// ceiling texture. Composed flush, resampled to the target square exactly, never alpha
+    /// keyed and never hand-placed.</summary>
+    Full,
 
-    public static TileRef Parse(string key)
-    {
-        var parts = key.Split(':');
-        var kind = parts[0] == "wall" ? TileKind.Wall : TileKind.Sprite;
-        return new TileRef(kind, int.Parse(parts[1]));
-    }
-
-    public override string ToString() => Key;
+    /// <summary>An object standing in an otherwise empty cell, carrying transparency — a
+    /// sprite, pickup or decoration. Composed inset over matte, content-box detected and
+    /// alpha keyed on the way back, then placed against its original's footprint.</summary>
+    Cutout,
 }
 
 /// <summary>How a tile participates in the engine's light/dark convention.</summary>
