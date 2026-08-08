@@ -16,14 +16,11 @@ public sealed class AppUpdateService(IJSRuntime js) : IDisposable
 {
     private DotNetObjectReference<AppUpdateService>? _self;
 
-    /// <summary>True once a new build is installed and waiting to take over.</summary>
+    /// <summary>True once a new build is installed and waiting to take over. There is no way to
+    /// wave it away: the offer is one small pill in the title bar, and a dismissed update is
+    /// indistinguishable from one that was never found — which is the failure this whole flow
+    /// already spent two deploys stuck in.</summary>
     public bool UpdateAvailable { get; private set; }
-
-    /// <summary>Set when the user dismisses the offer; the next new build clears it.</summary>
-    public bool Dismissed { get; private set; }
-
-    /// <summary>Show the offer only while there is one and it has not been waved away.</summary>
-    public bool ShouldPrompt => UpdateAvailable && !Dismissed;
 
     public event Action? OnChange;
 
@@ -50,19 +47,12 @@ public sealed class AppUpdateService(IJSRuntime js) : IDisposable
     public void OnUpdateAvailable()
     {
         UpdateAvailable = true;
-        Dismissed = false; // a genuinely new build is worth asking about again
         OnChange?.Invoke();
     }
 
     /// <summary>Take the update. The page reloads once the new worker is in control, so
     /// nothing after this call runs.</summary>
     public async Task ApplyAsync() => await js.InvokeVoidAsync("studioInterop.applyUpdate");
-
-    public void Dismiss()
-    {
-        Dismissed = true;
-        OnChange?.Invoke();
-    }
 
     public void Dispose() => _self?.Dispose();
 }

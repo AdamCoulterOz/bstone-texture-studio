@@ -12,14 +12,10 @@
 <PageTitle>Retro Texture Studio</PageTitle>
 
 <div class="topbar">
-    @if (Updates.ShouldPrompt)
+    @if (Updates.UpdateAvailable)
     {
-        <span class="update-offer">
-            <button class="update-btn" title="reload into the newly published version"
-                    @onclick="Updates.ApplyAsync">Update</button>
-            <button class="update-dismiss" title="keep running this version"
-                    @onclick="Updates.Dismiss">&times;</button>
-        </span>
+        <button class="update-btn" title="reload into the newly published version"
+                @onclick="Updates.ApplyAsync">Update</button>
     }
     <div class="seg view-seg" title="which art the item grid and platter display">
         <button class="seg-btn @(!State.ShowRedraw ? "active" : "")" title="show source art"

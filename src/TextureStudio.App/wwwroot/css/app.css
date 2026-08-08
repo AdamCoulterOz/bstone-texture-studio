@@ -155,11 +155,12 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
     padding-left: calc(env(titlebar-area-x, var(--titlebar-l, 0px)) + 10px);
     padding-right: calc(100vw - env(titlebar-area-x, 0px)
                         - env(titlebar-area-width, 100vw) + 10px); }
-/* Pin the trailing controls right without a spacer element. An auto margin absorbs free space
-   before flex-grow does, so when the update offer is showing its own auto margin splits the
-   space with this one and the offer lands centred — and when it is absent this alone keeps the
-   controls right. Spacer spans could not do both. */
-.topbar > .view-seg { margin-left: auto; }
+/* Pin the trailing controls right without a spacer element: an auto margin absorbs the free
+   space. It has to sit on whichever control comes first, so when the update pill is showing it
+   takes the margin and the view toggle gives its up — otherwise two auto margins would split
+   the space between them and separate the group instead of keeping it together. */
+.topbar > .view-seg, .topbar > .update-btn { margin-left: auto; }
+.topbar > .update-btn ~ .view-seg { margin-left: 0; }
 /* Only the structural changes are gated on the overlay actually showing. A fixed height, not
    min-height: matching the OS title bar is what makes the window read as native, and a bar
    that wrapped to two rows would drag from somewhere the OS is not. */
@@ -466,25 +467,21 @@ select.mixed { font-style: italic; color: var(--dim); }
    and game chip gone the left side is empty, so an in-flow offer drifted well left of centre.
    Taken out of flow to do it: the two cannot collide above ~700px of bar, and the studio's grid
    already needs ~1000px. */
-.update-offer { position: absolute; left: 50%; transform: translateX(-50%);
-    display: inline-flex; align-items: center; gap: 4px; }
-/* A plain yellow pill saying "Update" — the title bar is short on room, and the word plus the
-   colour already say enough; the tooltip carries the detail. */
-.update-btn { background: #f5b301; color: #221a00; border: 1px solid #d99e00; font-weight: 700;
-    border-radius: 999px; height: 22px; padding: 0 14px; font-size: 12px; cursor: pointer; }
-.update-btn:hover { background: #ffc61a; border-color: #d99e00; }
-/* Detached from the pill and unfilled, so the pill stays a clean shape and dismissing stays
-   the quieter of the two actions. */
-.update-dismiss { background: none; border: none; border-radius: 999px; width: 20px; height: 20px;
-    padding: 0; font-size: 14px; line-height: 1; color: var(--dim); cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; }
-.update-dismiss:hover { background: none; border: none; color: var(--text); }
+/* A bare yellow pill saying "Update", sitting with the other title bar controls rather than
+   floating mid-bar — the word and the colour say enough on their own, and the tooltip carries
+   the detail. No border: the fill is already the loudest thing in the chrome. There is no
+   dismiss; an update that has been found stays on offer until it is taken. */
+.update-btn { background: #f5b301; color: #221a00; border: none; font-weight: 700;
+    border-radius: 999px; height: 22px; padding: 0 14px; font-size: 12px; cursor: pointer;
+    /* A squircle rather than a plain arc: border-radius alone is a quarter-ellipse, which meets
+       the straight edge at a visible tangent, where a superellipse eases into it. Ignored by
+       anything that does not know corner-shape, which just leaves an ordinary pill. */
+    corner-shape: squircle; }
+.update-btn:hover { background: #ffc61a; border: none; }
 @media (prefers-reduced-motion: no-preference) {
-    .update-offer { animation: update-in 240ms ease-out; }
+    .update-btn { animation: update-in 240ms ease-out; }
 }
-/* Must repeat the centring translate: a keyframe's transform replaces it outright, so without
-   it the offer slides in half its width to the right and snaps back when the animation ends. */
-@keyframes update-in { from { opacity: 0; transform: translateX(-50%) translateY(-4px); } }
+@keyframes update-in { from { opacity: 0; transform: translateY(-4px); } }
 
 /* Unsupported-browser gate. Above every other layer (toasts are the highest at 65) and
    pointer-blocking, because nothing behind it can actually be used. */
