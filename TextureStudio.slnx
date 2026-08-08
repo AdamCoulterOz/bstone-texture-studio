@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/TextureStudio.App/TextureStudio.App.csproj" />
     <Project Path="src/TextureStudio.Core/TextureStudio.Core.csproj" />
+    <Project Path="src/TextureStudio.Pack/TextureStudio.Pack.csproj" />
     <Project Path="src/TextureStudio.Rekey/TextureStudio.Rekey.csproj" />
   </Folder>
   <Folder Name="/tests/">

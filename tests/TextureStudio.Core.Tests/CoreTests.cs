@@ -1,5 +1,5 @@
-using TextureStudio.Core;
-using TextureStudio.Core.Formats;
+using TextureStudio.Core.Games;
+using TextureStudio.Core.Games.BlakeStone;
 using TextureStudio.Core.Imaging;
 using TextureStudio.Core.Model;
 
@@ -16,35 +16,36 @@ public class CoreTests
     [Fact]
     public void Palette_HasExpectedShape()
     {
-        var palette = VgaPalette.ToRgba();
+        var palette = BlakeStonePalette.ToRgba();
         Assert.Equal(256, palette.Length);
         Assert.Equal(0xFF000000u, palette[0]); // black, opaque
     }
 
     [Fact]
-    public void Vswap_ParsesRealAogData()
+    public void BlakeStoneArchive_ParsesRealAogData()
     {
         if (VswapPath is null)
         {
             return; // No game data on this machine; format coverage comes from the real-data run.
         }
-        var vswap = new VswapFile(File.ReadAllBytes(VswapPath));
-        Assert.Equal(202, vswap.WallCount);
-        Assert.True(vswap.SpriteCount > 300, $"sprite count {vswap.SpriteCount}");
-        var palette = VgaPalette.ToRgba();
-        var wall = TileDecoders.DecodeWall(vswap.GetWallData(4), palette);
+        var game = new BlakeStoneGame();
+        var archive = game.OpenArchive(File.ReadAllBytes(VswapPath), "VSWAP.BS6");
+        Assert.Equal(202, archive.WallCount);
+        Assert.True(archive.SpriteCount > 300, $"sprite count {archive.SpriteCount}");
+        Assert.Equal(BlakeStoneGame.AliensOfGold, game.DetectEdition(archive));
+        var wall = archive.Decode(new TileRef(TileKind.Wall, 4));
         Assert.Equal(64, wall.Width);
         // Wall 4 is the orange brick texture — assert it is not a flat color.
         Assert.True(Enumerable.Range(0, wall.Pixels.Length / 4)
             .Select(i => wall.Pixels[i * 4])
             .Distinct().Count() > 8);
         // Decode every sprite; malformed posts would throw.
-        for (var i = 1; i < vswap.SpriteCount; i++)
+        for (var i = 1; i < archive.SpriteCount; i++)
         {
-            if (!vswap.IsEmptyChunk(vswap.SpriteStart + i))
+            var tile = new TileRef(TileKind.Sprite, i);
+            if (!archive.IsEmpty(tile))
             {
-                var sprite = TileDecoders.DecodeSprite(vswap.GetSpriteData(i), palette);
-                Assert.Equal(64, sprite.Width);
+                Assert.Equal(64, archive.Decode(tile).Width);
             }
         }
     }
@@ -468,5 +469,314 @@ public class CoreTests
         var xs = planned.Manifest.Cells.Select(c => c.X).ToList();
         Assert.Equal(new[] { 16, 272, 528, 784 }, xs);
         Assert.All(planned.Manifest.Cells, c => Assert.Equal(16, c.Y));
+    }
+
+    // ---- Game plugin layer ----
+
+    [Fact]
+    public void NewProject_TargetsTheDefaultGame()
+    {
+        // Pre-plugin project.json files carry no GameId, so the default is what they get.
+        Assert.Equal(BlakeStoneGame.GameId, new Project().GameId);
+        Assert.Equal(BlakeStoneGame.GameId, new GameCatalog().Get(null).Id);
+    }
+
+    [Fact]
+    public void Catalog_FallsBackWhenAGameIsNotInstalled()
+    {
+        var catalog = new GameCatalog();
+        Assert.Equal(BlakeStoneGame.GameId, catalog.Get("wolfenstein-3d").Id);
+    }
+
+    [Fact]
+    public void BlakeStone_PairsOddWallsToTheirEvenSibling()
+    {
+        var game = new BlakeStoneGame();
+        Assert.Equal("wall:12", game.DefaultLightSource(new TileRef(TileKind.Wall, 13)));
+        Assert.Null(game.DefaultLightSource(new TileRef(TileKind.Wall, 12)));
+        Assert.Null(game.DefaultLightSource(new TileRef(TileKind.Sprite, 13)));
+        Assert.Equal(PairRole.Light, game.AutoPairRole(new TileRef(TileKind.Wall, 12)));
+        Assert.Equal(PairRole.DerivedDark, game.AutoPairRole(new TileRef(TileKind.Wall, 13)));
+        Assert.Null(game.AutoPairRole(new TileRef(TileKind.Sprite, 12)));
+    }
+
+    [Fact]
+    public void BlakeStone_PacksIntoTheEditionsAssetDirectory()
+    {
+        var game = new BlakeStoneGame();
+        var project = new Project();
+
+        var aog = game.PlanPack(project, BlakeStoneGame.AliensOfGold, ["wall:12"]);
+        Assert.Equal("aog/wall_00000012.png", Assert.Single(aog.Entries).Path);
+        var ps = game.PlanPack(project, BlakeStoneGame.PlanetStrike, ["sprite:107"]);
+        Assert.Equal("ps/sprite_00000107.png", Assert.Single(ps.Entries).Path);
+        // Both Aliens of Gold releases share one mod-dir folder.
+        Assert.Equal(BlakeStoneGame.AliensOfGold.AssetDirectory,
+            BlakeStoneGame.AliensOfGoldShareware.AssetDirectory);
+    }
+
+    [Fact]
+    public void PlanPack_SynthesizesDarkVariantsAndReportsWhatItCouldNotMake()
+    {
+        var game = new BlakeStoneGame();
+        var project = new Project
+        {
+            Meta =
+            {
+                // A light wall, its derived dark sibling (no art of its own)…
+                ["wall:12"] = new TileMeta { Role = PairRole.Light },
+                ["wall:13"] = new TileMeta { Role = PairRole.DerivedDark },
+                // …an alternate dark, which is drawn light and darkens itself…
+                ["wall:20"] = new TileMeta { Role = PairRole.AlternateDark },
+                // …and a derived dark whose light source was never redrawn.
+                ["wall:41"] = new TileMeta { Role = PairRole.DerivedDark },
+            },
+        };
+
+        var plan = game.PlanPack(project, BlakeStoneGame.AliensOfGold,
+            ["wall:12", "wall:20", "sprite:7"]);
+
+        var byPath = plan.Entries.ToDictionary(e => e.Path);
+        Assert.Equal(4, plan.Entries.Count);
+        // The light wall and the plain sprite pack as drawn.
+        Assert.Equal(("wall:12", PackTransform.None),
+            (byPath["aog/wall_00000012.png"].SourceTileKey, byPath["aog/wall_00000012.png"].Transform));
+        Assert.Equal(("sprite:7", PackTransform.None),
+            (byPath["aog/sprite_00000007.png"].SourceTileKey, byPath["aog/sprite_00000007.png"].Transform));
+        // The derived dark has no art of its own — it is darkened from its light sibling.
+        Assert.Equal(("wall:12", PackTransform.Darken),
+            (byPath["aog/wall_00000013.png"].SourceTileKey, byPath["aog/wall_00000013.png"].Transform));
+        // The alternate dark darkens itself.
+        Assert.Equal(("wall:20", PackTransform.Darken),
+            (byPath["aog/wall_00000020.png"].SourceTileKey, byPath["aog/wall_00000020.png"].Transform));
+        Assert.Equal(2, plan.TransformedCount);
+        // The one with no usable art is reported rather than silently dropped.
+        Assert.Equal("wall:41", Assert.Single(plan.SkippedTileKeys));
+    }
+
+    [Fact]
+    public void PlanPack_HasNothingToDoWithoutRedraws()
+    {
+        var plan = new BlakeStoneGame().PlanPack(new Project(), BlakeStoneGame.AliensOfGold, []);
+        Assert.Empty(plan.Entries);
+        Assert.Equal(0, plan.TransformedCount);
+    }
+
+    [Fact]
+    public void ResolveEdition_PrefersThePinnedOneThenDetection()
+    {
+        var game = new BlakeStoneGame();
+        var archive = new FakeArchive("VSWAP.BS6", spriteCount: 900);
+        Assert.Equal(BlakeStoneGame.PlanetStrike,
+            GameCatalog.ResolveEdition(game, "ps", archive));
+        // An edition the game no longer has falls through to detection.
+        Assert.Equal(BlakeStoneGame.AliensOfGold,
+            GameCatalog.ResolveEdition(game, "aog_beta", archive));
+        Assert.Equal(BlakeStoneGame.AliensOfGoldShareware,
+            GameCatalog.ResolveEdition(game, "", new FakeArchive("VSWAP.BS1", spriteCount: 400)));
+        Assert.Equal(BlakeStoneGame.PlanetStrike,
+            GameCatalog.ResolveEdition(game, "", new FakeArchive("VSWAP.VSI", spriteCount: 900)));
+    }
+
+    [Fact]
+    public void BlakeStoneMetadata_ReadsTheShippedTableShape()
+    {
+        var metadata = new BlakeStoneMetadata();
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1)));
+        metadata.Load(System.Text.Encoding.UTF8.GetBytes(
+            """
+            {"aog_full":{
+              "1":{"c":"SPR_STAT_0","n":"Water Puddle","t":"bo_water_puddle"},
+              "2":{"c":"SPR_MUTHUM1_W2_7","u":"Mutant Human"},
+              "3":{"c":"SPR_STAT_2","t":"block"}}}
+            """));
+        Assert.True(metadata.IsLoaded);
+
+        var puddle = metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1));
+        Assert.Equal("Water Puddle", puddle!.EngineName);
+        Assert.Equal("pickup: water puddle", puddle.TypeLabel);
+        // Statics stand alone rather than joining an actor family.
+        Assert.Null(metadata.ActorFamily(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1)));
+
+        var mutant = metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 2));
+        Assert.Equal("Mutant Human", mutant!.InGameLabel);
+        Assert.Equal("walk 2 · rotation 7/8", mutant.FrameLabel);
+        Assert.Equal("MUTHUM1",
+            metadata.ActorFamily(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 2)));
+
+        Assert.Equal("blocking object",
+            metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 3))!.TypeLabel);
+        // Walls, unknown indices and other editions have no reference data.
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Wall, 1)));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 99)));
+        Assert.Null(metadata.Lookup(BlakeStoneGame.PlanetStrike, new TileRef(TileKind.Sprite, 1)));
+    }
+
+    [Fact]
+    public void BlakeStoneMetadata_SurvivesAMalformedTable()
+    {
+        var metadata = new BlakeStoneMetadata();
+        metadata.Load(System.Text.Encoding.UTF8.GetBytes("not json"));
+        Assert.True(metadata.IsLoaded);
+        Assert.Null(metadata.Lookup(BlakeStoneGame.AliensOfGold, new TileRef(TileKind.Sprite, 1)));
+    }
+
+    private sealed class FakeArchive(string sourceName, int spriteCount) : IGameArchive
+    {
+        public string SourceName => sourceName;
+        public int WallCount => 202;
+        public int SpriteCount => spriteCount;
+        public bool IsEmpty(TileRef tile) => false;
+        public RgbaImage Decode(TileRef tile) => new(64, 64);
+    }
+
+    // ---- Locator ----
+
+    [Fact]
+    public async Task Locator_FindsGamesBuriedInApplicationBundles()
+    {
+        // The layout that motivates the search: a storefront bundle wrapping a DOS-emulator
+        // bundle, the files eight levels below the folder a user can actually pick.
+        var tree = new FakeTree("Applications",
+            "Blake Stone - Aliens of Gold.app/Contents/Resources/game/Blake Stone Aliens of " +
+            "Gold.app/Contents/Resources/Blake Stone Aliens of Gold.boxer/C Blake Stone Aliens " +
+            "of Gold.harddisk/AUDIOHED.BS6",
+            "Blake Stone - Aliens of Gold.app/Contents/Resources/game/Blake Stone Aliens of " +
+            "Gold.app/Contents/Resources/Blake Stone Aliens of Gold.boxer/C Blake Stone Aliens " +
+            "of Gold.harddisk/VSWAP.BS6");
+
+        var result = await new BlakeStoneLocator().FindAsync(tree);
+
+        var source = Assert.Single(result.Sources);
+        Assert.Equal(BlakeStoneGame.AliensOfGold, source.Edition);
+        Assert.Equal("VSWAP.BS6", source.AssetFileName);
+        Assert.EndsWith("harddisk/VSWAP.BS6", source.AssetPath);
+        Assert.False(result.Exhausted);
+        // The display path stops at the outermost bundle rather than reciting the chain.
+        Assert.Equal("Applications/Blake Stone - Aliens of Gold.app", source.DisplayPath);
+    }
+
+    [Fact]
+    public async Task Locator_TellsEditionsApartByExtensionAndLabelsTheStore()
+    {
+        var tree = new FakeTree("search-root",
+            "steamapps/common/Blake Stone - Aliens of Gold/AUDIOHED.BS6",
+            "steamapps/common/Blake Stone - Aliens of Gold/VSWAP.BS6",
+            "steamapps/common/Blake Stone - Planet Strike/AUDIOHED.VSI",
+            "steamapps/common/Blake Stone - Planet Strike/VSWAP.VSI",
+            "GOG Games/Blake Stone Shareware/audiohed.bs1",
+            "GOG Games/Blake Stone Shareware/vswap.bs1");
+
+        var result = await new BlakeStoneLocator().FindAsync(tree);
+
+        Assert.Equal(3, result.Sources.Count);
+        Assert.Equal(
+            [BlakeStoneGame.AliensOfGoldShareware, BlakeStoneGame.AliensOfGold, BlakeStoneGame.PlanetStrike],
+            result.Sources.Select(s => s.Edition));
+        // Walk order is alphabetical per level, so GOG (G) precedes steamapps (s).
+        Assert.Equal(["GOG", "Steam", "Steam"], result.Sources.Select(s => s.StoreLabel));
+        // Lower-case names on disk still match.
+        Assert.Equal("vswap.bs1", result.Sources[0].AssetFileName);
+    }
+
+    [Fact]
+    public async Task Locator_StopsAtAGameFolderRatherThanSearchingUnderIt()
+    {
+        // What is below a game folder belongs to that game — a mod directory holding another
+        // copy's files must not be reported as a second install.
+        var tree = new FakeTree("root",
+            "game/AUDIOHED.BS6",
+            "game/VSWAP.BS6",
+            "game/mods/other/AUDIOHED.VSI",
+            "game/mods/other/VSWAP.VSI");
+
+        var result = await new BlakeStoneLocator().FindAsync(tree);
+
+        var source = Assert.Single(result.Sources);
+        Assert.Equal("game", source.DirectoryPath);
+        // Nothing below the game folder was even listed.
+        Assert.DoesNotContain(tree.Listed, p => p.StartsWith("game/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Locator_IgnoresAGameFolderWithNoArtToExtract()
+    {
+        // The marker proves it is a game folder, but without the art container there is
+        // nothing for the studio to import — and the walk still must not descend.
+        var tree = new FakeTree("root", "game/AUDIOHED.BS6", "game/MAPHEAD.BS6");
+
+        var result = await new BlakeStoneLocator().FindAsync(tree);
+
+        Assert.Empty(result.Sources);
+        Assert.False(result.Exhausted);
+    }
+
+    [Fact]
+    public async Task Locator_GivesUpOnATreeTooDeepRatherThanRunningAway()
+    {
+        // 12 levels — past the depth cap, so the game at the bottom is never reached and the
+        // caller is told the answer is incomplete.
+        var deep = string.Join("/", Enumerable.Range(0, 12).Select(i => $"d{i}"));
+        var tree = new FakeTree("root", $"{deep}/AUDIOHED.BS6", $"{deep}/VSWAP.BS6");
+
+        var result = await new BlakeStoneLocator().FindAsync(tree);
+
+        Assert.Empty(result.Sources);
+        Assert.True(result.Exhausted);
+    }
+
+    [Fact]
+    public async Task Locator_SurvivesAnUnreadableBranch()
+    {
+        var tree = new FakeTree("root", "denied/x", "ok/AUDIOHED.BS6", "ok/VSWAP.BS6")
+        {
+            Unreadable = { "denied" },
+        };
+
+        var result = await new BlakeStoneLocator().FindAsync(tree);
+
+        Assert.Equal("ok", Assert.Single(result.Sources).DirectoryPath);
+    }
+
+    /// <summary>An in-memory <see cref="IDirectoryTree"/> built from full file paths.</summary>
+    private sealed class FakeTree(string rootName, params string[] filePaths) : IDirectoryTree
+    {
+        public string RootName => rootName;
+
+        /// <summary>Directories that answer as if the browser refused to read them.</summary>
+        public HashSet<string> Unreadable { get; } = [];
+
+        /// <summary>Every path the walk actually listed, for asserting what it skipped.</summary>
+        public List<string> Listed { get; } = [];
+
+        public Task<DirectoryEntries> ListAsync(string path, CancellationToken cancellationToken)
+        {
+            Listed.Add(path);
+            if (Unreadable.Contains(path))
+            {
+                return Task.FromResult(DirectoryEntries.Empty);
+            }
+            var prefix = path.Length == 0 ? "" : path + "/";
+            var files = new List<string>();
+            var directories = new HashSet<string>();
+            foreach (var filePath in filePaths)
+            {
+                if (!filePath.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                var rest = filePath[prefix.Length..];
+                var slash = rest.IndexOf('/');
+                if (slash < 0)
+                {
+                    files.Add(rest);
+                }
+                else
+                {
+                    directories.Add(rest[..slash]);
+                }
+            }
+            return Task.FromResult(new DirectoryEntries(files, [.. directories]));
+        }
     }
 }

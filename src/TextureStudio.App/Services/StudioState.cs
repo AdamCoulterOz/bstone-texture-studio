@@ -1,15 +1,14 @@
-using System.Net.Http.Json;
 using System.Text.Json;
-using TextureStudio.Core;
-using TextureStudio.Core.Formats;
+using TextureStudio.Core.Games;
 using TextureStudio.Core.Generation;
 using TextureStudio.Core.Imaging;
 using TextureStudio.Core.Model;
 
 namespace TextureStudio.App.Services;
 
-/// <summary>Read-only engine-derived reference data for a sprite — shown in Properties,
-/// never written into the user's own metadata fields.</summary>
+/// <summary>Read-only engine-derived reference data for a tile — shown in Properties, never
+/// written into the user's own metadata fields. The game plugin supplies everything except
+/// <see cref="ArtBounds"/>, which is measured from the decoded original.</summary>
 public sealed record CanonicalDisplay(
     string Constant, string? EngineName, string? InGameLabel, string? TypeLabel,
     string? FrameLabel, string? ArtBounds);
@@ -17,17 +16,17 @@ public sealed record CanonicalDisplay(
 /// <summary>All app state and workflow operations. Panes subscribe to OnChange.</summary>
 public sealed class StudioState(
     ImageCodec codec, GeminiImageClient gemini, OpenAiImageClient openai,
-    WorkspaceService workspace, HttpClient http)
+    WorkspaceService workspace, ContentSearchService content, GameCatalog catalog,
+    HttpClient http)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
-    private readonly uint[] _palette = VgaPalette.ToRgba();
     private readonly Dictionary<string, RgbaImage> _originals = [];
     private readonly Dictionary<string, RgbaImage> _redraws = [];
     private readonly Dictionary<string, RgbaImage> _derivedDarks = [];
     private readonly Dictionary<string, string> _urlCache = [];
     private readonly HashSet<string> _urlPending = [];
-    private byte[]? _vswapBytes;
+    private byte[]? _sourceBytes;
     private CancellationTokenSource? _autoSaveCts;
 
     /// <summary>Legacy single style reference — migrated into StyleRefs on load.</summary>
@@ -37,7 +36,221 @@ public sealed class StudioState(
 
     public event Action? OnChange;
 
-    public VswapFile? Vswap { get; private set; }
+    /// <summary>The imported game data, or null before an import. Doubles as the "is there
+    /// anything to work on" check throughout the app.</summary>
+    public IGameArchive? Archive { get; private set; }
+
+    /// <summary>Every installed game plugin, in chooser order.</summary>
+    public IReadOnlyList<IGame> Games => catalog.Games;
+
+    /// <summary>The game this workspace targets. Falls back to the first plugin when the
+    /// project names one that is no longer installed, so the workspace still opens.</summary>
+    public IGame Game => catalog.Get(Project.GameId);
+
+    /// <summary>The workspace's edition: pinned when the user chose one, otherwise detected
+    /// from the imported archive.</summary>
+    public GameEdition Edition => GameCatalog.ResolveEdition(Game, Project.EditionId, Archive);
+
+    /// <summary>True while the edition is being inferred rather than pinned.</summary>
+    public bool EditionIsAuto => Game.Editions.All(e => e.Id != Project.EditionId);
+
+    /// <summary>Switching game reinterprets every tile index, so it is only offered on a
+    /// workspace with nothing imported and nothing curated yet.</summary>
+    public bool CanChangeGame => Archive is null && Project.Items.Count == 0;
+
+    public void SetGame(string gameId)
+    {
+        if (Project.GameId == gameId || !CanChangeGame)
+        {
+            return;
+        }
+        Project.GameId = gameId;
+        Project.EditionId = "";
+        SetStatus($"Game set to {Game.Name}. Import {Game.ImportHint} to begin.", "Workspace");
+    }
+
+    /// <summary>Pin an edition, or pass null/empty to go back to detecting it. Only the
+    /// engine reference table and the pack directory are edition-dependent — the decoded
+    /// art is not, so nothing has to be re-read.</summary>
+    public void SetEdition(string? editionId)
+    {
+        Project.EditionId = Game.Editions.Any(e => e.Id == editionId) ? editionId! : "";
+        SetStatus($"Edition: {Edition.Name}{(EditionIsAuto ? " (detected)" : "")}.", "Workspace");
+    }
+
+    // ---- Packing ----
+
+    /// <summary>Packing needs somewhere to write and something to write — the workspace
+    /// folder and at least one applied redraw.</summary>
+    public bool CanPack => workspace.IsOpen && !workspace.WritesBlocked && _redraws.Count > 0;
+
+    /// <summary>Where a pack is written, relative to the workspace.</summary>
+    public const string PackFolderName = "pack";
+
+    /// <summary>Build the game's pack into <c>&lt;workspace&gt;/pack</c>. The game decides what
+    /// the pack contains and where each file goes; this only reads the art, applies the
+    /// transform each entry asks for, and writes the bytes.
+    ///
+    /// Existing files are overwritten in place, but stale ones are not removed — the folder is
+    /// additive, so deleting it first is the way to get a clean pack.</summary>
+    public async Task PackAsync()
+    {
+        if (!CanPack)
+        {
+            Fail(workspace.IsOpen
+                ? "Nothing to pack yet — apply some redraws first."
+                : "Open a workspace first — the pack is written into it.");
+            return;
+        }
+        var plan = Game.PlanPack(Project, Edition, _redraws.Keys.ToList());
+        if (plan.Entries.Count == 0)
+        {
+            Fail($"Nothing to pack for {Game.Name} — apply some redraws first.");
+            return;
+        }
+        Busy = true;
+        SetStatus($"Packing {plan.Entries.Count} textures…", "Progress");
+        var written = 0;
+        try
+        {
+            foreach (var entry in plan.Entries)
+            {
+                if (!_redraws.TryGetValue(entry.SourceTileKey, out var art))
+                {
+                    continue; // planned from a redraw that has since been dropped
+                }
+                if (entry.Transform == PackTransform.Darken)
+                {
+                    art = DarkGenerator.Apply(art, Project.DarkParams);
+                }
+                // Each encode is a browser round trip, which yields on its own — so the UI
+                // stays responsive without an explicit delay; only the status is throttled.
+                await workspace.WriteAsync(
+                    $"{PackFolderName}/{entry.Path}", await codec.EncodePngAsync(art));
+                if (++written % 25 == 0)
+                {
+                    SetStatus($"Packing… {written}/{plan.Entries.Count}", "Progress");
+                }
+            }
+            var skipped = plan.SkippedTileKeys.Count;
+            SetStatus($"Packed {written} textures into '{workspace.Name}/{PackFolderName}' " +
+                      $"({plan.TransformedCount} dark variants synthesized" +
+                      $"{(skipped > 0 ? $", {skipped} tiles had no art" : "")}). " +
+                      $"Point {Game.InstallGuide.PortName} at that folder.");
+        }
+        catch (Exception ex)
+        {
+            await workspace.ProbeWriteAsync();
+            SetStatus($"⚠ Packing stopped after {written} textures: {FirstLine(ex.Message)}");
+        }
+        finally
+        {
+            Busy = false;
+            Notify();
+        }
+    }
+
+    // ---- Locating installed game content ----
+
+    /// <summary>The read-only folder granted for the locator to search.</summary>
+    public ContentSearchService ContentSearch => content;
+
+    /// <summary>Copies of the game found by the last search; null before one has run.</summary>
+    public GameSearchResult? FoundSources { get; private set; }
+
+    public bool Searching { get; private set; }
+
+    /// <summary>Grant a folder to search, then scan it. Needs a user gesture for the picker.</summary>
+    public async Task PickAndSearchAsync()
+    {
+        if (await content.PickAsync())
+        {
+            await SearchForGameDataAsync();
+        }
+    }
+
+    /// <summary>Re-scan the granted folder — silently on load, or on the user's request.</summary>
+    public async Task SearchForGameDataAsync()
+    {
+        if (Game.Locator is not { } locator || !content.IsOpen || Searching)
+        {
+            return;
+        }
+        Searching = true;
+        SetStatus($"Searching '{content.Name}' for {Game.Name} game data…", "Progress");
+        try
+        {
+            FoundSources = await locator.FindAsync(content);
+            var found = FoundSources.Sources.Count;
+            SetStatus(found == 0
+                ? $"No {Game.Name} game data under '{content.Name}'" +
+                  (FoundSources.Exhausted
+                      ? " — the search hit its limit, so try a folder closer to the game."
+                      : $" ({FoundSources.DirectoriesVisited} folders searched).")
+                : $"Found {found} cop{(found == 1 ? "y" : "ies")} of {Game.Name} under " +
+                  $"'{content.Name}'.");
+        }
+        catch (Exception ex)
+        {
+            FoundSources = null;
+            SetStatus($"⚠ Search of '{content.Name}' failed: {FirstLine(ex.Message)}");
+        }
+        finally
+        {
+            Searching = false;
+            Notify();
+        }
+    }
+
+    /// <summary>Stop searching that folder and forget the grant.</summary>
+    public async Task ForgetContentRootAsync()
+    {
+        var name = content.Name;
+        await content.ForgetAsync();
+        FoundSources = null;
+        SetStatus($"Stopped searching '{name}'.", "Workspace");
+    }
+
+    /// <summary>Import a located copy: read its art container and run the normal import.
+    /// The edition is left to detection, which reads the same file name the locator did — a
+    /// stale manual pin that disagrees with the file is dropped rather than mislabelling the
+    /// import.</summary>
+    public async Task ImportFoundSourceAsync(GameSource source)
+    {
+        if (!workspace.IsOpen)
+        {
+            Fail("Open a workspace first — everything you do is stored there.");
+            return;
+        }
+        try
+        {
+            Busy = true;
+            SetStatus($"Reading {source.AssetFileName} from {source.DisplayPath}…", "Progress");
+            var bytes = await content.ReadAsync(source.AssetPath);
+            if (bytes is null or { Length: 0 })
+            {
+                Fail($"Could not read {source.AssetPath} — re-grant the search folder.");
+                return;
+            }
+            if (!EditionIsAuto && Project.EditionId != source.Edition.Id)
+            {
+                Project.EditionId = "";
+                SetStatus($"Edition un-pinned — {source.AssetFileName} is " +
+                          $"{source.Edition.Name}.", "Workspace");
+            }
+            LoadGameData(bytes, source.AssetFileName);
+        }
+        catch (Exception ex)
+        {
+            Fail($"{Game.Name} game data load failed: {FirstLine(ex.Message)}");
+        }
+        finally
+        {
+            Busy = false;
+            Notify();
+        }
+    }
+
     public Project Project { get; private set; } = new();
     public List<string> WallKeys { get; } = [];
     public List<string> SpriteKeys { get; } = [];
@@ -130,7 +343,7 @@ public sealed class StudioState(
     /// <summary>The configured provider's key (for gating generate/revise).</summary>
     public string ActiveProviderKey => UsesOpenAi ? OpenAiApiKey : ApiKey;
     public string Status { get; private set; } =
-        "Open a workspace folder, then load a VSWAP.BS6 (AoG) or VSWAP.VSI (PS). " +
+        "Open a workspace folder, choose its game, then import the game's data. " +
         "Without a workspace, work is in-memory only.";
     public bool Busy { get; private set; }
 
@@ -519,7 +732,7 @@ public sealed class StudioState(
             return "Progress";
         }
         if (message.Contains("workspace") || message.Contains("Workspace") ||
-            message.Contains("VSWAP"))
+            message.Contains("game data"))
         {
             return "Workspace";
         }
@@ -544,31 +757,36 @@ public sealed class StudioState(
         Notify();
     }
 
-    public void LoadVswap(byte[] bytes, string fileName)
+    /// <summary>Import the workspace game's asset container: enumerate its non-empty tiles,
+    /// then decode and mirror them into the workspace in the background.</summary>
+    public void LoadGameData(byte[] bytes, string fileName)
     {
-        Vswap = new VswapFile(bytes);
-        _vswapBytes = bytes;
-        Project.GameName = fileName;
+        Archive = Game.OpenArchive(bytes, fileName);
+        _sourceBytes = bytes;
+        Project.SourceFileName = fileName;
         WallKeys.Clear();
         SpriteKeys.Clear();
         _originals.Clear();
         _urlCache.Clear();
         _artBoxCache.Clear();
-        for (var i = 0; i < Vswap.WallCount; i++)
+        for (var i = 0; i < Archive.WallCount; i++)
         {
-            if (!Vswap.IsEmptyChunk(i))
+            var tile = new TileRef(TileKind.Wall, i);
+            if (!Archive.IsEmpty(tile))
             {
-                WallKeys.Add(new TileRef(TileKind.Wall, i).Key);
+                WallKeys.Add(tile.Key);
             }
         }
-        for (var i = 0; i < Vswap.SpriteCount; i++)
+        for (var i = 0; i < Archive.SpriteCount; i++)
         {
-            if (!Vswap.IsEmptyChunk(Vswap.SpriteStart + i))
+            var tile = new TileRef(TileKind.Sprite, i);
+            if (!Archive.IsEmpty(tile))
             {
-                SpriteKeys.Add(new TileRef(TileKind.Sprite, i).Key);
+                SpriteKeys.Add(tile.Key);
             }
         }
-        SetStatus($"{fileName}: {WallKeys.Count} walls, {SpriteKeys.Count} sprites.");
+        SetStatus($"{Game.Name} — {Edition.Name} game data from {fileName}: " +
+                  $"{WallKeys.Count} walls, {SpriteKeys.Count} sprites.");
         _ = DecodeAllAndPersistAsync(fileName);
     }
 
@@ -581,7 +799,7 @@ public sealed class StudioState(
     }
 
     /// <summary>Decode every tile up front; when a workspace is open, persist the decoded
-    /// originals (and the VSWAP itself) so the folder is a self-contained mirror.</summary>
+    /// originals (and the source archive itself) so the folder is a self-contained mirror.</summary>
     private async Task DecodeAllAndPersistAsync(string fileName)
     {
         var allKeys = WallKeys.Concat(SpriteKeys).ToList();
@@ -590,7 +808,7 @@ public sealed class StudioState(
         {
             try
             {
-                await workspace.WriteAsync($"source/{fileName}", _vswapBytes!);
+                await workspace.WriteAsync($"source/{fileName}", _sourceBytes!);
                 // Skip re-writing originals when the workspace already holds this set.
                 var existing = await workspace.ListAsync("originals");
                 persist = existing.Length != allKeys.Count;
@@ -635,7 +853,7 @@ public sealed class StudioState(
                 SetStatus($"Decoding tiles… {done}/{allKeys.Count}" + (persist ? " (writing workspace)" : ""));
             }
         }
-        SetStatus($"{Project.GameName}: {WallKeys.Count} walls, {SpriteKeys.Count} sprites decoded" +
+        SetStatus($"{Project.SourceFileName}: {WallKeys.Count} walls, {SpriteKeys.Count} sprites decoded" +
                   (workspace.IsOpen ? $" — workspace '{workspace.Name}' up to date." : "."));
         await EnsureItemsMigratedAsync();
     }
@@ -646,10 +864,7 @@ public sealed class StudioState(
         {
             return cached;
         }
-        var tileRef = TileRef.Parse(key);
-        var image = tileRef.Kind == TileKind.Wall
-            ? TileDecoders.DecodeWall(Vswap!.GetWallData(tileRef.Index), _palette)
-            : TileDecoders.DecodeSprite(Vswap!.GetSpriteData(tileRef.Index), _palette);
+        var image = Archive!.Decode(TileRef.Parse(key));
         _originals[key] = image;
         return image;
     }
@@ -744,106 +959,52 @@ public sealed class StudioState(
         return dark;
     }
 
-    // ---- Canonical engine metadata (read-only reference; never writes user fields) ----
+    // ---- Engine reference metadata (read-only; the game plugin owns it) ----
 
-    private Dictionary<string, Dictionary<string, CanonicalJson>>? _canonical;
-    private Task? _canonicalTask;
+    private Task? _metadataTask;
 
-    private sealed record CanonicalJson(string C, string? N, string? T, string? U);
+    /// <summary>Fetch the active game's reference table once. The table is a static asset so
+    /// Core stays HTTP-free — see <see cref="IGameMetadata"/>.</summary>
+    private Task EnsureMetadataAsync() => _metadataTask ??= LoadMetadataAsync();
 
-    private Task EnsureCanonicalAsync() => _canonicalTask ??= LoadCanonicalAsync();
-
-    /// <summary>Engine reference data for a sprite tile; null for walls, unknown indices, or
-    /// while the canonical table is still loading (a load is kicked off on first call).</summary>
-    public CanonicalDisplay? GetCanonical(string key)
+    private async Task LoadMetadataAsync()
     {
-        var tileRef = TileRef.Parse(key);
-        if (tileRef.Kind != TileKind.Sprite || Vswap is null)
+        // Games are singletons, so a table already fetched for this game stays good across
+        // workspace switches; only a switch to a different game needs a fetch.
+        if (Game.Metadata is not { IsLoaded: false } metadata)
         {
-            return null;
+            return;
         }
-        if (_canonical is null)
-        {
-            _ = EnsureCanonicalAsync();
-            return null;
-        }
-        var game = Project.GameName.EndsWith(".vsi", StringComparison.OrdinalIgnoreCase)
-            ? "ps"
-            : Vswap.SpriteCount <= 560 ? "aog_sw" : "aog_full";
-        if (!_canonical.TryGetValue(game, out var map) ||
-            !map.TryGetValue(tileRef.Index.ToString(), out var entry))
-        {
-            return null;
-        }
-        return new CanonicalDisplay(
-            entry.C,
-            entry.N,
-            entry.U,
-            TypeLabel(entry.T),
-            FrameLabel(entry.C),
-            ArtBounds(key));
-    }
-
-    private async Task LoadCanonicalAsync()
-    {
         try
         {
-            _canonical = await http.GetFromJsonAsync<Dictionary<string, Dictionary<string, CanonicalJson>>>(
-                "canonical-sprites.json");
+            metadata.Load(await http.GetByteArrayAsync(metadata.AssetPath));
         }
-        catch
+        catch (Exception ex)
         {
-            _canonical = [];
+            metadata.Load([]); // degrade to no reference data rather than retry on every tile
+            SetStatus($"⚠ {Game.Name} reference data unavailable ({FirstLine(ex.Message)}) — " +
+                      "engine names and frame labels will be blank.", "Errors");
         }
         Notify();
     }
 
-    private static string? TypeLabel(string? statType) => statType switch
+    /// <summary>Engine reference data for a tile; null when the game ships none, the tile is
+    /// unknown, or the table is still loading (a load is kicked off on first call).</summary>
+    public CanonicalDisplay? GetCanonical(string key)
     {
-        null => null,
-        "block" => "blocking object",
-        "dressing" => "walk-through dressing",
-        _ when statType.StartsWith("bo_") => "pickup: " + statType[3..].Replace('_', ' '),
-        _ => statType,
-    };
-
-    /// <summary>Human reading of the animation tokens in an actor sprite constant, e.g.
-    /// SPR_MUTHUM1_W2_7 → "walk 2 · rotation 7/8".</summary>
-    private static string? FrameLabel(string constant)
-    {
-        var tokens = constant.Replace("SPR_", "").Split('_');
-        for (var i = 0; i < tokens.Length; i++)
+        if (Archive is null || Game.Metadata is not { } metadata)
         {
-            var token = tokens[i];
-            var rotation = i + 1 < tokens.Length && tokens[i + 1].Length == 1 &&
-                           char.IsBetween(tokens[i + 1][0], '1', '8')
-                ? $" · rotation {tokens[i + 1]}/8"
-                : "";
-            switch (token)
-            {
-                case "W1" or "W2" or "W3" or "W4":
-                    return $"walk {token[1]}{rotation}";
-                case "S" when rotation.Length > 0:
-                    return $"stand{rotation}";
-                case "DEAD":
-                    return "dead";
-                case "OUCH":
-                    return "hit reaction";
-            }
-            foreach (var (prefix, label) in new[]
-                     {
-                         ("SHOOT", "shoot"), ("ATTACK", "attack"), ("PAIN", "pain"),
-                         ("DIE", "death"), ("DEATH", "death"), ("EXP", "explosion"),
-                     })
-            {
-                if (token.StartsWith(prefix))
-                {
-                    var frame = token[prefix.Length..];
-                    return frame.Length > 0 ? $"{label} frame {frame}" : label;
-                }
-            }
+            return null;
         }
-        return null;
+        if (!metadata.IsLoaded)
+        {
+            _ = EnsureMetadataAsync();
+            return null;
+        }
+        return metadata.Lookup(Edition, TileRef.Parse(key)) is { } tile
+            ? new CanonicalDisplay(tile.Constant, tile.EngineName, tile.InGameLabel,
+                tile.TypeLabel, tile.FrameLabel, ArtBounds(key))
+            : null;
     }
 
     private readonly Dictionary<string, (int X, int Y, int W, int H)?> _artBoxCache = [];
@@ -1055,13 +1216,13 @@ public sealed class StudioState(
     /// Category+Name, unnamed sprites by engine actor family). No-op when items exist.</summary>
     public async Task EnsureItemsMigratedAsync()
     {
-        if (Vswap is null)
+        if (Archive is null)
         {
             return;
         }
         if (Project.Items.Count == 0)
         {
-            await EnsureCanonicalAsync();
+            await EnsureMetadataAsync();
             var allKeys = WallKeys.Concat(SpriteKeys).ToList();
             Project.Items = ItemMigration.Build(allKeys, Project.Meta, ActorFamilyFor);
             SetStatus($"Item layer built: {Project.Items.Count} items from {allKeys.Count} tiles.");
@@ -1188,43 +1349,10 @@ public sealed class StudioState(
         }
     }
 
-    /// <summary>Actor-family grouping key for unnamed sprites: the constant with its
-    /// animation suffix stripped (SPR_GREEN_OOZE2 → GREEN_OOZE); null for walls/statics.</summary>
-    private string? ActorFamilyFor(string key)
-    {
-        var constant = RawConstantFor(key);
-        if (constant is null)
-        {
-            return null;
-        }
-        var c = constant.Replace("SPR_", "");
-        if (c.StartsWith("STAT_"))
-        {
-            return null; // statics stand alone unless named
-        }
-        var match = System.Text.RegularExpressions.Regex.Match(
-            c, @"^(.+?)_?(W[1-4](_[1-8])?|S_[1-8]|WALK\d|FLY\d?(_\d)?|SWING\d|SHOOT\d|ATTACK\d|" +
-               @"SPIT\d(_\d)?|SPIT_EXP\d_\d|PAIN(_\d)?\d?|OUCH|DIE_?\d|DEATH\d?|DEAD(_\d)?|" +
-               @"EXP\d|B\d|READY|ATK\d|EMPTY|ALERT|NORMAL|FIRE(_\d)?\d?|EGG|HATCH\d|ROAM\d|" +
-               @"APPEAR\d|WARP\d|WOUNDED\d|WRIST_\d|[1-8])$");
-        return match.Success ? match.Groups[1].Value.TrimEnd('_') : c;
-    }
-
-    private string? RawConstantFor(string key)
-    {
-        var tileRef = TileRef.Parse(key);
-        if (tileRef.Kind != TileKind.Sprite || _canonical is null || Vswap is null)
-        {
-            return null;
-        }
-        var game = Project.GameName.EndsWith(".vsi", StringComparison.OrdinalIgnoreCase)
-            ? "ps"
-            : Vswap.SpriteCount <= 560 ? "aog_sw" : "aog_full";
-        return _canonical.TryGetValue(game, out var map) &&
-               map.TryGetValue(tileRef.Index.ToString(), out var entry)
-            ? entry.C
-            : null;
-    }
+    /// <summary>The game's grouping key that collects one actor's frames into a single item;
+    /// null means the tile stands alone.</summary>
+    private string? ActorFamilyFor(string key) =>
+        Archive is null ? null : Game.Metadata?.ActorFamily(Edition, TileRef.Parse(key));
 
     /// <summary>Grey placeholder for an empty item name: the engine's own name for the first
     /// frame (statinfo name, in-game label, or humanized constant family).</summary>
@@ -1253,8 +1381,8 @@ public sealed class StudioState(
         return item.TileKeys.FirstOrDefault() ?? "item";
     }
 
-    /// <summary>Grey placeholder for an empty frame purpose: the sprite constant.</summary>
-    public string FramePurposePlaceholder(string key) => RawConstantFor(key) ?? key;
+    /// <summary>Grey placeholder for an empty frame purpose: the engine's own constant.</summary>
+    public string FramePurposePlaceholder(string key) => GetCanonical(key)?.Constant ?? key;
 
     public IEnumerable<string> UsedCategories() =>
         Project.Items.Select(i => i.Category)
@@ -1272,13 +1400,9 @@ public sealed class StudioState(
             .Distinct()
             .OrderBy(c => c);
 
-    public static string? DefaultLightSource(string key)
-    {
-        var tileRef = TileRef.Parse(key);
-        return tileRef.Kind == TileKind.Wall && tileRef.Index % 2 == 1
-            ? new TileRef(TileKind.Wall, tileRef.Index - 1).Key
-            : null;
-    }
+    /// <summary>The tile whose redraw is darkened for <paramref name="key"/> under the
+    /// active game's own light/dark convention, unless the user pointed it elsewhere.</summary>
+    public string? DefaultLightSource(string key) => Game.DefaultLightSource(TileRef.Parse(key));
 
     public void InvalidateDerivedDarks()
     {
@@ -2824,8 +2948,8 @@ public sealed class StudioState(
 
     private void ResetSessionState()
     {
-        Vswap = null;
-        _vswapBytes = null;
+        Archive = null;
+        _sourceBytes = null;
         WallKeys.Clear();
         SpriteKeys.Clear();
         _originals.Clear();
@@ -2858,8 +2982,8 @@ public sealed class StudioState(
         }
     }
 
-    /// <summary>Restore a session from the workspace folder: VSWAP copy, project.json,
-    /// and redrawn tiles.</summary>
+    /// <summary>Restore a session from the workspace folder: project.json (which names the
+    /// game), then the archived game data and the redrawn tiles.</summary>
     private async Task LoadFromWorkspaceAsync()
     {
         SetStatus($"Opening workspace '{workspace.Name}'…");
@@ -2870,13 +2994,24 @@ public sealed class StudioState(
             ActiveGroup = Project.Groups.FirstOrDefault();
             RestoreJobHistory();
         }
+        // The reference table is per-game, so a workspace on a different game needs a reload.
+        _metadataTask = null;
         var sources = await workspace.ListAsync("source");
-        if (Vswap is null && sources.Length > 0)
+        if (Archive is null && sources.Length > 0)
         {
-            var vswapBytes = await workspace.ReadAsync($"source/{sources[0]}");
-            if (vswapBytes is not null)
+            var sourceBytes = await workspace.ReadAsync($"source/{sources[0]}");
+            if (sourceBytes is not null)
             {
-                LoadVswap(vswapBytes, sources[0]);
+                try
+                {
+                    LoadGameData(sourceBytes, sources[0]);
+                }
+                catch (Exception ex)
+                {
+                    SetStatus($"⚠ '{sources[0]}' is not {Game.Name} game data " +
+                              $"({FirstLine(ex.Message)}) — check the workspace's game in " +
+                              "Settings → Game.");
+                }
             }
         }
         var keyBytes = await workspace.ReadAsync(ApiKeyFileName);
@@ -2987,21 +3122,26 @@ public sealed class StudioState(
         return index < 0 ? s : s[..index];
     }
 
-    public void AutoPairWalls()
+    /// <summary>Apply the active game's light/dark pairing convention to every tile the user
+    /// has not classified. Tiles the game has no opinion about are left alone.</summary>
+    public void AutoPairTiles()
     {
-        foreach (var key in WallKeys)
+        foreach (var key in WallKeys.Concat(SpriteKeys))
         {
             var meta = GetMeta(key);
-            if (meta.Role != PairRole.Unclassified)
+            if (meta.Role != PairRole.Unclassified ||
+                Game.AutoPairRole(TileRef.Parse(key)) is not { } role)
             {
                 continue;
             }
-            var tileRef = TileRef.Parse(key);
-            meta.Role = tileRef.Index % 2 == 0 ? PairRole.Light : PairRole.DerivedDark;
-            meta.LightSourceKey = tileRef.Index % 2 == 1 ? DefaultLightSource(key) : null;
-            meta.Category = meta.Category == Categories.Uncategorized ? "Surfaces" : meta.Category;
+            meta.Role = role;
+            meta.LightSourceKey = role == PairRole.Light ? null : DefaultLightSource(key);
+            meta.Category = meta.Category == Categories.Uncategorized
+                ? Game.AutoPairCategory
+                : meta.Category;
         }
-        SetStatus("Applied even/odd light-dark defaults to unclassified walls — fix the exceptions by hand.");
+        SetStatus($"Applied {Game.AutoPairDescription} to unclassified tiles — " +
+                  "fix the exceptions by hand.");
     }
 
     private static string SafeName(string name) =>

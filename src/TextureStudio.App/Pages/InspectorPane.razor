@@ -117,7 +117,7 @@
                     <label>@(soloMeta.Role == PairRole.DerivedDark ? "Light source" : "Based on light (brightness reference)")
                         <select value="@(soloMeta.LightSourceKey ?? string.Empty)"
                                 @onchange="e => { soloMeta.LightSourceKey = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }">
-                            <option value="">auto (@(StudioState.DefaultLightSource(soloKey) ?? "sibling"))</option>
+                            <option value="">auto (@(State.DefaultLightSource(soloKey) ?? "sibling"))</option>
                             @foreach (var lightKey in LightSourceOptions(item, soloKey))
                             {
                                 <option value="@lightKey">@LightOptionLabel(lightKey)</option>
@@ -185,7 +185,7 @@
                                                 title="@(meta.Role == PairRole.DerivedDark ? "light source" : "brightness reference light")"
                                                 value="@(meta.LightSourceKey ?? string.Empty)"
                                                 @onchange="e => { meta.LightSourceKey = string.IsNullOrEmpty((string?)e.Value) ? null : (string)e.Value!; State.Notify(); }">
-                                            <option value="">auto (@(StudioState.DefaultLightSource(key) ?? "sibling"))</option>
+                                            <option value="">auto (@(State.DefaultLightSource(key) ?? "sibling"))</option>
                                             @foreach (var lightKey in LightSourceOptions(item, key))
                                             {
                                                 <option value="@lightKey">@LightOptionLabel(lightKey)</option>
@@ -447,7 +447,7 @@
         }
         meta.Role = role;
         meta.LightSourceKey = role is PairRole.DerivedDark or PairRole.AlternateDark
-            ? meta.LightSourceKey ?? StudioState.DefaultLightSource(key)
+            ? meta.LightSourceKey ?? State.DefaultLightSource(key)
             : null;
         State.Notify();
     }

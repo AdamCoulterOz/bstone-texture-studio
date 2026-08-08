@@ -164,6 +164,116 @@ window.studioInterop = {
   });
 })();
 
+// ---- Content search root: a second, READ-ONLY directory the user grants so the game
+// locator can find installed copies. Separate from the workspace on purpose — it is
+// somewhere like Applications or a Steam library, which must never be written to.
+// Remembered under its own IndexedDB key, so a return visit re-scans without asking.
+(function () {
+  const DB = "texture-studio", STORE = "handles", KEY = "content-root";
+
+  function idb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function idbSet(value) {
+    return idb().then(db => new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      value === null ? tx.objectStore(STORE).delete(KEY) : tx.objectStore(STORE).put(value, KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    }));
+  }
+
+  function idbGet() {
+    return idb().then(db => new Promise((resolve, reject) => {
+      const req = db.transaction(STORE).objectStore(STORE).get(KEY);
+      req.onsuccess = () => resolve(req.result ?? null);
+      req.onerror = () => reject(req.error);
+    }));
+  }
+
+  let root = null;
+
+  async function dir(path) {
+    if (!root) throw new Error("no content root");
+    let d = root;
+    for (const part of path.split("/").filter(p => p)) {
+      d = await d.getDirectoryHandle(part);
+    }
+    return d;
+  }
+
+  Object.assign(window.studioInterop, {
+    async pickContentRoot() {
+      try {
+        root = await window.showDirectoryPicker({ mode: "read", id: "game-content" });
+        await idbSet(root);
+        return root.name;
+      } catch {
+        return null; // user cancelled or API unavailable
+      }
+    },
+
+    async contentHasStored() {
+      try { return (await idbGet()) !== null; } catch { return false; }
+    },
+
+    // interactive=false: silent restore only (permission already granted).
+    async restoreContentRoot(interactive) {
+      try {
+        const handle = await idbGet();
+        if (!handle) return null;
+        let perm = await handle.queryPermission({ mode: "read" });
+        if (perm !== "granted" && interactive) {
+          perm = await handle.requestPermission({ mode: "read" });
+        }
+        if (perm !== "granted") return null;
+        root = handle;
+        return handle.name;
+      } catch {
+        return null;
+      }
+    },
+
+    // Files and sub-directories of one directory. An unreadable directory answers empty:
+    // a locator walks whatever it is given, and a refused branch is a normal outcome.
+    async contentList(path) {
+      try {
+        const d = await dir(path);
+        const files = [], dirs = [];
+        for await (const [name, handle] of d.entries()) {
+          (handle.kind === "file" ? files : dirs).push(name);
+        }
+        return { files, dirs };
+      } catch {
+        return { files: [], dirs: [] };
+      }
+    },
+
+    async contentRead(path) {
+      try {
+        const parts = path.split("/");
+        const name = parts.pop();
+        const d = await dir(parts.join("/"));
+        const file = await (await d.getFileHandle(name)).getFile();
+        return new Uint8Array(await file.arrayBuffer());
+      } catch {
+        return null;
+      }
+    },
+
+    async contentForget() {
+      root = null;
+      try { await idbSet(null); } catch { /* best effort */ }
+    },
+  });
+})();
+
 // Forget the stored workspace handle (added after the pick/restore block).
 window.studioInterop.wsForget = async function () {
   try {

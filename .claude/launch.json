@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "texture-studio",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/TextureStudio.App",
+        "--urls",
+        "http://localhost:5610"
+      ],
+      "port": 5610
+    }
+  ]
+}

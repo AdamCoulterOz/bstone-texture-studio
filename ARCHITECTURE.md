@@ -15,10 +15,16 @@ conventions and open questions see [CONTEXT.md](CONTEXT.md).
 │    Pages/*.razor              ← UI, no domain logic          │
 │    Services/StudioState.cs    ← the single app state object  │
 │    Services/ImageCodec.cs     ← typed wrapper over interop   │
-│    Services/WorkspaceService  ← typed wrapper over FS Access │
+│    Services/WorkspaceService  ← workspace handle (readwrite) │
+│    Services/ContentSearchSvc  ← search handle (read-only)    │
 ├─────────────────────────────────────────────────────────────┤
 │  TextureStudio.Core (pure, no UI, no JS)                     │
-│    Formats/   VSWAP parsing, VGA palette, tile decoders      │
+│    Games/     IGame · IGameArchive · IGameMetadata           │
+│               IGameLocator · IDirectoryTree · PackPlan       │
+│               GameEdition · GameCatalog                      │
+│      BlakeStone/  VSWAP archive, VGA palette, sprite table,  │
+│                   installed-copy locator                     │
+│    Formats/   VSWAP container + tile codecs (shared)         │
 │    Imaging/   compose · slice · key · placement · darken     │
 │    Generation/ model clients, revision tools                 │
 │    Model/     Project + everything persisted                 │
@@ -31,6 +37,85 @@ conventions and open questions see [CONTEXT.md](CONTEXT.md).
 Dependencies point inward only: Core knows nothing about Blazor, JS, or the
 workspace. The two CLIs reuse Core directly, which is why pack/re-slice logic
 never has to be duplicated for the browser.
+
+## The game layer
+
+Everything a *source game* dictates sits behind `Games/IGame`; everything after
+the tiles are decoded is game-agnostic. One workspace targets one game
+(`Project.GameId`) and one edition (`Project.EditionId`, empty = detect).
+
+| Concern | Interface member | Blake Stone |
+| --- | --- | --- |
+| Asset container | `OpenArchive` → `IGameArchive` | `VswapArchive` over `VswapFile` + `TileDecoders` + `BlakeStonePalette` |
+| Which release | `Editions`, `DetectEdition` | extension: `.BS6` full, `.BS1` shareware, `.VSI` Planet Strike |
+| Import UI | `ImportAccept`, `ImportHint` | `.BS6,.BS1,.VSI` |
+| Light/dark convention | `DefaultLightSource`, `AutoPairRole`, `AutoPairCategory`, `AutoPairDescription` | odd wall ← even sibling |
+| Pack contents | `PlanPack(project, edition, redrawKeys)` → `PackPlan` | `aog/wall_00000012.png`, darks synthesized |
+| Install steps | `InstallGuide` | links to BStone + its addon and external-texture docs |
+| Engine reference data | `Metadata` → `IGameMetadata` | `canonical-sprites.json`, `SPR_*` constant parsing |
+| Finding installed copies | `Locator` → `IGameLocator` | bounded walk for `AUDIOHED.*` markers, `VSWAP.*` art |
+
+`IGameArchive` is deliberately index-addressed (`WallCount`/`SpriteCount` +
+`IsEmpty`) rather than a filtered list, because the engine addresses tiles by
+index and the pack file names have to match those indices.
+
+`IGameMetadata` never fetches: it declares `AssetPath` (a wwwroot-relative JSON
+table) and the app hands the bytes to `Load`, which keeps Core HTTP-free. A
+malformed or missing table degrades to "no reference data" rather than throwing,
+so the studio still works.
+
+`GameCatalog` is the registry — a singleton in the app (so a game's loaded
+reference table is shared), constructed directly by the CLIs. `Get` falls back
+to the first plugin, so a workspace naming a game that is no longer installed
+still opens with its art intact.
+
+### Locating installed game data
+
+`IGameLocator` finds copies of a game under a directory the user granted, so
+nobody has to know where a storefront buried the files — on macOS they sit
+inside an application bundle eight levels down, which a folder picker cannot
+even select. The walk is ported from bstone's launcher
+(`bstone_game_source.cpp`) and keeps its rules:
+
+- Bounded at **10 levels** and **4096 directories**, so granting a whole drive
+  gives up rather than hanging. `GameSearchResult.Exhausted` says a cap stopped
+  it, and the drawer tells the user to pick a narrower folder.
+- A folder holding a **marker file** (`AUDIOHED.BS6`/`.BS1`/`.VSI`) is an
+  *answer, not a place to search under* — what is below it belongs to that
+  game, so a mod directory never reads as a second install.
+- Sub-directories are walked in sorted order, so the same grant always yields
+  the same list.
+- The store label (`Steam`/`GOG`/`Folder`) is read off the path, so two copies
+  of one edition are tellable apart.
+
+The art container's extension names the edition outright — `.BS6` full, `.BS1`
+shareware, `.VSI` Planet Strike — which is why `DetectEdition` trusts it and
+only falls back to sprite count for a renamed file.
+
+**What could not come across:** bstone also finds installs *without* asking, via
+the Windows registry, Steam's `libraryfolders.vdf` and GOG's Galaxy database. A
+browser has no ambient filesystem — every byte comes from a handle the user
+granted — so that half has no equivalent. The closest thing, and what the app
+does, is remember the granted root in IndexedDB (`ContentSearchService`, a
+read-only sibling of `WorkspaceService`) and re-scan silently on return, but
+only when no game data is loaded yet: a scan is thousands of interop round
+trips and is not worth doing on a session that already has its art.
+
+### Adding a game
+
+1. Implement `IGame` and `IGameArchive` under `Core/Games/<YourGame>/`. Reuse
+   `Core/Formats` if the game is Wolfenstein-family — the VSWAP container and
+   tile codecs are shared; only the palette is per-game.
+2. Optionally implement `IGameMetadata` and ship its table in
+   `App/wwwroot/`.
+3. Optionally implement `IGameLocator` so users need not hunt for their install
+   — it only needs marker file names, art file names and the bounded walk.
+4. Add the game to `GameCatalog`'s built-in list.
+5. Nothing else. Sheet layout, prompt assembly, slicing, keying, placement
+   tuning, packing and the whole UI already read the game through
+   `StudioState.Game` / `StudioState.Edition`.
+
+Keep `IGame.Id` stable forever — it is persisted in every `project.json`.
 
 ## Process model and the interop boundary
 
@@ -55,8 +140,12 @@ design:
 
 `interop.js` also hosts the non-image glue: `getRect` (measuring the rendered
 canvas so region maths is exact at any size), `copyText`, `autoSizePrompt`,
-`registerSelectAllHandler`, and the File System Access helpers `wsProbeWrite` /
-`wsForget`.
+`registerSelectAllHandler`, and two File System Access blocks — the read-write
+workspace (`pickWorkspace`, `restoreWorkspace`, `wsRead`/`wsWrite`/`wsList`,
+`wsProbeWrite`, `wsForget`) and the read-only content search root
+(`pickContentRoot`, `restoreContentRoot`, `contentList`, `contentRead`,
+`contentForget`). Both remember their handle in the same IndexedDB store under
+different keys, so granting one never disturbs the other.
 
 ## State management
 
@@ -68,10 +157,13 @@ StudioState.OnChange += StateHasChanged;   // every pane subscribes
 State.Notify();                            // fire + schedule a debounced save
 ```
 
-`StudioState` owns the project, selection, jobs, URL caches, and the API keys. All
-panes render from it and call `Notify()` after mutating it. `Notify()` both raises
-`OnChange` and schedules the 1.5s debounced autosave, which is why *forgetting*
-`@bind:after="State.Notify"` silently loses data (see CONTEXT.md).
+`StudioState` owns the project, the decoded archive, selection, jobs, URL caches,
+locator results, and the API keys. It also resolves the workspace's `Game` and
+`Edition` on every read rather than caching them, so changing either takes effect
+everywhere at once. All panes render from it and call `Notify()` after mutating
+it. `Notify()` both raises `OnChange` and schedules the 1.5s debounced autosave,
+which is why *forgetting* `@bind:after="State.Notify"` silently loses data (see
+CONTEXT.md).
 
 Component-local state stays local: platter selection, drag targets, lightbox
 index, placement focus and the placement zoom live in their `.razor` files, not in
@@ -101,15 +193,16 @@ past ~1600 entries and refills lazily for whatever is on screen.
 
 Two tiers, both inside the user-chosen workspace folder:
 
-- **`project.json`** — the entire logical project: items, per-tile meta, groups
-  (including `SeamlessRuns`), per-tile version index, dark/lighten params,
-  generation settings, job history, and UI state. Debounced-saved; flushed
-  immediately when a settings drawer closes.
-- **Files on disk** — anything large: `originals/`, `redraws/`,
-  `revisions/<group>/<id>/`, `generations/` (every raw sheet verbatim),
-  `jobs/<jobId>/` (keyed tiles of an in-progress placement session), refs, and
-  the two API key files (never in `project.json`, so the project stays
-  shareable).
+- **`project.json`** — the entire logical project: the target game and edition,
+  items, per-tile meta, groups (including `SeamlessRuns`), per-tile version
+  index, dark/lighten params, generation settings, job history, and UI state.
+  Debounced-saved; flushed immediately when a settings drawer closes.
+- **Files on disk** — anything large: `source/` (the imported game data verbatim,
+  which is what lets a returning session rebuild without re-importing),
+  `originals/`, `redraws/`, `revisions/<group>/<id>/`, `generations/` (every raw
+  sheet verbatim), `jobs/<jobId>/` (keyed tiles of an in-progress placement
+  session), `pack/` (rebuildable output), refs, and the two API key files (never
+  in `project.json`, so the project stays shareable).
 
 `WorkspaceService` wraps the File System Access API (`PickAsync`, `RestoreAsync`,
 `HasStoredHandleAsync`, `ProbeWriteAsync`, plus read/write/list). The directory
@@ -126,9 +219,11 @@ SaveProjectToWorkspaceAsync
   └─ write project.json
 
 LoadFromWorkspaceAsync
-  └─ deserialize project.json
+  └─ deserialize project.json  ← names the game, so this must come first
   └─ RestoreJobHistory()       rebuild live jobs; Queued/Running → Interrupted,
                                Placing keeps its placement snapshot
+  └─ re-open source/           through the project's game; a mismatch is reported,
+                               not thrown (the workspace still opens)
   └─ RestoreUiState()          reopen group, tabs, items filters, redraw toggle
   └─ migrations (items, versions, style prompt, seamless runs)
 ```
@@ -284,19 +379,40 @@ region coordinates stay exact regardless of how the responsive preview is sized.
 
 ## Packing
 
-`TextureStudio.Pack <workspace>` walks the project and writes
-`<workspace>/pack/aog/{wall|sprite}_<id:08>.png`: redraws as-is, AlternateDark as
-darken(own redraw), DerivedDark as darken(light source's redraw). Sprites keep
-alpha; walls stay opaque. bstone's hardware renderer probes those paths inside any
-VFS search path, so `bstone --mod_dir <workspace>/pack` plus the External Textures
-option is the whole install story — no engine changes.
+`IGame.PlanPack` decides what a pack contains: one `PackEntry` per file, naming
+where it goes, **which tile's redraw supplies its pixels** (not always the tile
+the file is for — a derived dark is made from its light source's art) and what
+transform to apply. Planning is pure, so the same plan drives both callers:
+
+- **In the app** — the *Pack* button in the title bar writes
+  `<workspace>/pack/…` straight through the workspace handle, reading redraws
+  from memory and encoding each PNG in the browser. Each encode is an interop
+  round trip, which yields on its own, so the UI stays responsive; the status
+  line is throttled to every 25 files.
+- **The CLI** — `TextureStudio.Pack <workspace> [out-dir] [--edition <id>]`
+  reads `redraws/*.png` from disk and writes the same plan out.
+
+Redraws go out as-is, AlternateDark as darken(own redraw), DerivedDark as
+darken(light source's redraw). Sprites keep alpha; walls stay opaque. Tiles that
+could have produced a file but had no usable art come back in
+`PackPlan.SkippedTileKeys`, so a half-finished pack is visible rather than
+silent. Writing is additive — existing files are overwritten, stale ones are
+not removed, so a clean pack means deleting the folder first.
+
+For Blake Stone the result is `pack/aog/{wall|sprite}_<id:08>.png`, which
+bstone's hardware renderer probes inside any VFS search path — so pointing it at
+the folder plus the External Textures option is the whole install story, and no
+engine changes are needed. `IGame.InstallGuide` supplies those links rather than
+spelled-out commands, which differ per platform and go stale here.
 
 ## UI composition
 
-- **Shell** (`Home.razor`) — topbar (source/redraw segmented toggle, Settings
-  menu), collapsible Items sidebar, optional Properties column, main pane,
-  statusbar (workspace split button, busy ring, Jobs button with status pills),
-  and the drawer host (Model API / Style / Generation / Application).
+- **Shell** (`Home.razor`) — topbar (brand, game chip, source/redraw segmented
+  toggle, Pack button, Settings menu), collapsible Items sidebar, optional Properties column,
+  main pane, statusbar (workspace split button, busy ring, Jobs button with
+  status pills), and the drawer host (Game / Model API / Style / Generation /
+  Application). The game chip shows the workspace's game and edition and opens
+  the Game drawer.
 - **Main pane** (`GroupPane.razor`) — a tab strip whose first tab is always the
   group grid; each opened job gets a closable tab, fully decoupled from the group
   selection. Notification banners render at the top of this pane.
@@ -308,6 +424,7 @@ option is the whole install story — no engine changes.
 
 ## Extension points
 
+- **Add a game** — see [The game layer](#adding-a-game).
 - **Add a model provider** — implement a client in `Core/Generation`, register it
   in `Program.cs`, add a key property + workspace key file in `StudioState`,
   route it in `GenerateWithRetryAsync`, and extend `ThinkingLevelsFor` /

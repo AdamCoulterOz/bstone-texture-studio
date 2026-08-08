@@ -158,3 +158,70 @@ in the git log; this records *why* the shape of the project changed.
   OpenAI quality) rather than exposing provider-specific controls.
 - Kept the error-message shape consistent across clients so the shared retry
   classifier works for both.
+
+## 2026-08-08: Make Games Plugins — Retro Texture Studio
+
+- Renamed the project from *BStone Texture Studio*: the pipeline was never
+  Blake-Stone-specific, only its front and back doors were. Repo renamed
+  `bstone-texture-studio` → `retro-texture-studio` (the old Pages URL does not
+  redirect, so the live site needs a redeploy and the personal-site link an
+  update).
+- Extracted every game assumption behind `Core/Games/IGame`: opening the asset
+  container, editions and their detection, the light/dark pairing convention,
+  the mod-dir layout, the install steps, and the engine reference table. Blake
+  Stone became the first implementation rather than the only possibility.
+- Split *format* from *game*: the VSWAP container and tile codecs stayed in
+  `Core/Formats` (the Wolfenstein family shares them), while the palette moved
+  into the plugin — it is game data, not a generic VGA table.
+- Kept Core HTTP-free by having `IGameMetadata` declare a static-asset path that
+  the app fetches and hands back, and made missing reference data degrade to
+  blank labels instead of failing.
+- Chose per-workspace game selection with a hard lock once tiles exist: the same
+  tile index means different art in different games, so switching would silently
+  corrupt curation. `Project.GameId` defaults to Blake Stone's id so pre-plugin
+  workspaces load unchanged — checked by packing a real workspace and confirming
+  the same 939 file names came out (contents were spot-checked at this point; the
+  exhaustive byte comparison came with the packer move below).
+- Gave the workspace a **Game** drawer and a topbar chip, and moved importing
+  into it — which let the Items sidebar drop its Import button. An empty items
+  list then had no route to importing, so it grew a first-run empty state that
+  names the game and links to the drawer.
+
+## 2026-08-08: Let Games Find Their Own Content
+
+- Added `IGameLocator`, porting the searching half of bstone's launcher
+  (`bstone_game_source.cpp`) — its bounds (10 levels, 4096 directories), its
+  marker files, its "a game folder is an answer, not a place to search under"
+  rule, and its store labelling.
+- Did **not** port the unprompted half — registry, Steam library manifests, GOG
+  Galaxy sqlite. A browser has no ambient filesystem; every byte comes from a
+  handle the user granted, so there is no equivalent to reach for. The granted
+  root is remembered instead, and re-scanned silently only when no game data is
+  loaded, since a scan is thousands of interop round trips.
+- Kept the search root a separate, read-only handle from the workspace: it
+  points at Applications or a Steam library, which must never be written to.
+- Took the edition from the art file's extension rather than its contents —
+  `.BS6`/`.BS1`/`.VSI` name the release outright, so the old sprite-count
+  heuristic became a fallback for renamed files.
+- Kept manual file-picking beside it. The locator is the fast path, not the
+  only one.
+
+## 2026-08-08: Pack From the App, and Link Rather Than Instruct
+
+- Moved packing behind `IGame.PlanPack`, which *plans* rather than performs: a
+  list of files, each naming its source tile and transform. That is what let one
+  packer serve both the CLI and the browser, which share no I/O at all.
+- Added a **Pack** button to the title bar. Packing no longer needs a terminal —
+  the app writes `<workspace>/pack` through the workspace handle it already has,
+  which is what makes the studio self-contained for a non-developer.
+- Replaced the spelled-out install commands with `InstallGuide` links to the
+  source port and its own documentation. Command lines differ per platform and
+  rot in this repo; the port's docs do not.
+- Verified the move by packing a real workspace and comparing all 939 PNGs
+  against the previous implementation's output — byte-identical. Comparing
+  against the workspace's *stored* `pack/` instead showed 40 differences, which
+  turned out to be a stale baseline: it was built at 03:58 and those redraws
+  changed between 04:37 and 05:29. Worth remembering that a workspace's `pack/`
+  is only a valid baseline if nothing has been applied since.
+- Hid the job toasts while the jobs popup is open: they dock in the same corner
+  one layer above it, duplicating the list they cover.

@@ -1,8 +1,9 @@
 // Ported from bstone vgapal.cpp (GPL-2.0-or-later, Apogee Entertainment / bstone contributors).
-// 256 VGA palette entries, 6-bit channels (0-63).
-namespace TextureStudio.Core;
+// Blake Stone's own 256-entry VGA palette, 6-bit channels (0-63) — game data, not a generic
+// VGA table: other Wolfenstein-family games ship different palettes.
+namespace TextureStudio.Core.Games.BlakeStone;
 
-public static class VgaPalette
+public static class BlakeStonePalette
 {
     public static readonly byte[] Raw6Bit =
     {

@@ -182,7 +182,16 @@ public sealed class GenerationSettings
 public sealed class Project
 {
     public int Version { get; set; } = 1;
-    public string GameName { get; set; } = "";
+    /// <summary>Which game plugin this workspace targets (see Games/GameCatalog). The default
+    /// is Blake Stone's id, so pre-plugin projects — which have no such field — deserialize
+    /// straight onto the game they were made with.</summary>
+    public string GameId { get; set; } = "blake-stone";
+    /// <summary>Pinned game edition id; empty means "detect from the imported archive".</summary>
+    public string EditionId { get; set; } = "";
+    /// <summary>File name of the imported source archive, e.g. "VSWAP.BS6". Kept under its
+    /// original JSON name so existing workspaces keep loading.</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("GameName")]
+    public string SourceFileName { get; set; } = "";
     public Dictionary<string, TileMeta> Meta { get; set; } = [];
     public List<TileItem> Items { get; set; } = [];
     public List<TileGroup> Groups { get; set; } = [];

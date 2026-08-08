@@ -5,10 +5,15 @@
 @inject GeminiImageClient Gemini
 @inject IJSRuntime JS
 
-<PageTitle>BStone Texture Studio</PageTitle>
+<PageTitle>Retro Texture Studio</PageTitle>
 
 <div class="topbar">
-    <span class="brand">BStone Texture Studio</span>
+    <span class="brand">Retro Texture Studio</span>
+    <button class="game-chip" title="@($"this workspace targets {State.Game.Name} — {State.Edition.Name}. Click to change.")"
+            @onclick="() => OpenDrawer(Drawer.Game)">
+        @State.Game.Name
+        <span class="game-chip-edition">@State.Edition.Name</span>
+    </button>
     <span class="topbar-spacer"></span>
     <div class="seg view-seg" title="which art the item grid and platter display">
         <button class="seg-btn @(!State.ShowRedraw ? "active" : "")" title="show source art"
@@ -20,6 +25,13 @@
             <span class="seg-icon"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.12226 0.282251L4.77398 1.35305C4.66568 1.67859 4.48288 1.97441 4.24012 2.21699C3.99735 2.45957 3.70131 2.64223 3.37552 2.75044L2.3039 3.09845L2.28247 3.10381C2.19987 3.13292 2.12835 3.18692 2.07776 3.25836C2.02717 3.3298 2 3.41516 2 3.50268C2 3.5902 2.02717 3.67556 2.07776 3.747C2.12835 3.81844 2.19987 3.87244 2.28247 3.90155L3.35409 4.24956C3.67988 4.35778 3.97592 4.54044 4.21869 4.78302C4.46145 5.0256 4.64425 5.32141 4.75255 5.64696L5.10082 6.71775C5.12996 6.80029 5.184 6.87175 5.2555 6.92231C5.32699 6.97286 5.41242 7.00001 5.5 7.00001C5.58758 7.00001 5.67301 6.97286 5.7445 6.92231C5.75156 6.91732 5.75843 6.91213 5.76514 6.90675C5.82641 6.85755 5.87291 6.79215 5.89918 6.71775L6.24745 5.64696C6.26617 5.59014 6.28716 5.53422 6.31034 5.47932C6.42037 5.21872 6.57977 4.98116 6.78032 4.77999C6.81846 4.74173 6.85792 4.70496 6.89861 4.66973C7.11698 4.48064 7.37081 4.33588 7.64592 4.24421L8.71753 3.8962C8.80013 3.86708 8.87165 3.81308 8.92224 3.74164C8.97283 3.6702 9 3.58484 9 3.49733C9 3.40981 8.97283 3.32445 8.92224 3.25301C8.87165 3.18157 8.80013 3.12757 8.71753 3.09845L7.64592 2.75044C7.32409 2.63941 7.03232 2.45549 6.79344 2.21307C6.55456 1.97065 6.37503 1.67631 6.26889 1.35305L5.92061 0.282251C5.89147 0.19972 5.83743 0.128252 5.76594 0.0776997C5.69444 0.0271473 5.60902 0 5.52143 0C5.43385 0 5.34842 0.0271473 5.27693 0.0776997C5.20543 0.128252 5.15139 0.19972 5.12226 0.282251ZM0.217072 8.21319L0.982513 7.96461C1.21522 7.88731 1.42668 7.75684 1.60008 7.58357C1.77349 7.4103 1.90406 7.199 1.98141 6.96647L2.23018 6.20161C2.25099 6.14266 2.2896 6.09161 2.34066 6.05551C2.39173 6.0194 2.45275 6.00001 2.51531 6.00001C2.57787 6.00001 2.63889 6.0194 2.68996 6.05551C2.74102 6.09161 2.77962 6.14266 2.80044 6.20161L3.0492 6.96647C3.12502 7.19737 3.25325 7.40762 3.42389 7.58077C3.59452 7.75392 3.80292 7.8853 4.0328 7.96461L4.79824 8.21319C4.85723 8.23398 4.90832 8.27255 4.94446 8.32358C4.98059 8.37461 5 8.43558 5 8.4981C5 8.56061 4.98059 8.62158 4.94446 8.67261C4.90832 8.72364 4.85723 8.76221 4.79824 8.78301L4.0328 9.03158C3.79968 9.10926 3.58795 9.24032 3.41452 9.41428C3.24109 9.58824 3.11074 9.80031 3.0339 10.0335L2.78513 10.7984C2.76431 10.8574 2.72571 10.9084 2.67465 10.9445C2.62358 10.9806 2.56256 11 2.5 11C2.43744 11 2.37642 10.9806 2.32535 10.9445C2.27429 10.9084 2.23569 10.8574 2.21487 10.7984L1.9661 10.0335C1.88875 9.80101 1.75818 9.58972 1.58478 9.41645C1.41137 9.24317 1.19991 9.11271 0.967204 9.03541L0.201763 8.78683C0.142767 8.76603 0.0916796 8.72746 0.0555429 8.67643C0.0194063 8.62541 0 8.56443 0 8.50192C0 8.43941 0.0194063 8.37844 0.0555429 8.32741C0.0916796 8.27638 0.142767 8.23781 0.201763 8.21701L0.217072 8.21319ZM3 14V11.9009C3.08531 11.8659 3.16702 11.8221 3.24386 11.7696C3.46406 11.6094 3.6242 11.399 3.72429 11.1486L3.98453 10.3473C3.9894 10.3343 3.99452 10.3213 4 10.3084V14C4 14.3726 4.10191 14.7215 4.27937 15.0201L8.94868 10.432C9.53227 9.85859 10.4677 9.85859 11.0513 10.432L15.7206 15.0201C15.8981 14.7215 16 14.3726 16 14V6C16 4.89543 15.1046 4 14 4H9.9091C9.96903 3.84162 10 3.67231 10 3.49611C10 3.32279 9.97003 3.15614 9.91202 3H14C15.6569 3 17 4.34315 17 6V14C17 15.6569 15.6569 17 14 17H6C4.34315 17 3 15.6569 3 14ZM14 7.5C14 8.32843 13.3284 9 12.5 9C11.6716 9 11 8.32843 11 7.5C11 6.67157 11.6716 6 12.5 6C13.3284 6 14 6.67157 14 7.5ZM13 7.5C13 7.22386 12.7761 7 12.5 7C12.2239 7 12 7.22386 12 7.5C12 7.77614 12.2239 8 12.5 8C12.7761 8 13 7.77614 13 7.5ZM14 16C14.3692 16 14.7149 15.9 15.0118 15.7256L10.3504 11.1453C10.1559 10.9542 9.84409 10.9542 9.64956 11.1453L4.98824 15.7256C5.28505 15.9 5.63085 16 6 16H14Z" fill="currentColor"/></svg></span>
         </button>
     </div>
+    <button class="pack-btn" disabled="@(!State.CanPack || State.Busy)"
+            title="@(State.CanPack
+                       ? $"build the {State.Game.Name} pack into {State.Workspace.Name}/{StudioState.PackFolderName}"
+                       : State.Workspace.IsOpen
+                           ? "apply some redraws first"
+                           : "open a workspace first")"
+            @onclick="State.PackAsync">Pack</button>
     <div class="settings-wrap">
         <button class="@(_settingsOpen || _drawer != Drawer.None ? "active" : "")"
                 @onclick="() => _settingsOpen = !_settingsOpen">Settings <IconChevron Dir="down" Size="14" /></button>
@@ -27,6 +39,7 @@
         {
             <div class="menu-backdrop" @onclick="() => _settingsOpen = false"></div>
             <div class="settings-menu">
+                <button @onclick="() => OpenDrawerFromMenu(Drawer.Game)">Game</button>
                 <button @onclick="() => OpenDrawerFromMenu(Drawer.Model)">Model API</button>
                 <button @onclick="() => OpenDrawerFromMenu(Drawer.Style)">Style</button>
                 <button @onclick="() => OpenDrawerFromMenu(Drawer.Generation)">Generation</button>
@@ -67,10 +80,133 @@
     <div class="drawer-backdrop" @onclick="CloseDrawer"></div>
     <div class="drawer">
         <div class="drawer-header">
-            <strong>@(_drawer switch { Drawer.Model => "Model API", Drawer.Style => "Style", Drawer.Application => "Application", _ => "Generation" })</strong>
+            <strong>@(_drawer switch { Drawer.Game => "Game", Drawer.Model => "Model API", Drawer.Style => "Style", Drawer.Application => "Application", _ => "Generation" })</strong>
             <button class="close-btn" @onclick="CloseDrawer"><IconDismiss Size="13" /></button>
         </div>
-        @if (_drawer == Drawer.Model)
+        @if (_drawer == Drawer.Game)
+        {
+            <div class="drawer-body">
+        <span class="wide"><strong class="ref-heading">Source game</strong></span>
+        <span class="hint wide">Each workspace targets one game. The plugin decides how its
+            art is read, which tiles pair light/dark, and where a packed texture lands in the
+            mod directory.</span>
+        <label class="wide">Game
+            <select value="@State.Project.GameId" disabled="@(!State.CanChangeGame)"
+                    @onchange="e => State.SetGame((string?)e.Value ?? State.Project.GameId)">
+                @foreach (var game in State.Games)
+                {
+                    <option value="@game.Id">@game.Name</option>
+                }
+            </select>
+        </label>
+        <span class="hint wide">@State.Game.Description</span>
+        @if (!State.CanChangeGame)
+        {
+            <span class="hint wide">Locked: this workspace already has imported or curated
+                tiles, and tile ids mean different things in a different game. Start a fresh
+                workspace to work on another game.</span>
+        }
+        <label class="wide" title="which release of the game — picks the mod-dir folder and the engine reference table">Edition
+            <select value="@(State.EditionIsAuto ? "" : State.Project.EditionId)"
+                    @onchange="e => State.SetEdition((string?)e.Value)">
+                <option value="">auto (@State.Edition.Name)</option>
+                @foreach (var edition in State.Game.Editions)
+                {
+                    <option value="@edition.Id">@edition.Name</option>
+                }
+            </select>
+        </label>
+        <span class="wide"><strong class="ref-heading">Game data</strong></span>
+        <span class="hint wide">Supply your own legally owned game files: @State.Game.ImportHint.
+            They are copied into the workspace and decoded into <code>originals/</code>.</span>
+        @if (State.Game.Locator is { } locator)
+        {
+            <span class="hint wide">@locator.SearchHint</span>
+            <div class="wide search-row">
+                @if (State.ContentSearch.IsOpen)
+                {
+                    <span class="search-root" title="the folder being searched">
+                        🔍 @State.ContentSearch.Name</span>
+                    <button disabled="@State.Searching"
+                            @onclick="State.SearchForGameDataAsync">Rescan</button>
+                    <button class="close-btn" title="stop searching this folder"
+                            @onclick="State.ForgetContentRootAsync"><IconDismiss Size="11" /></button>
+                }
+                else
+                {
+                    <button disabled="@State.Searching"
+                            @onclick="State.PickAndSearchAsync">Choose a folder to search…</button>
+                }
+            </div>
+            @if (State.Searching)
+            {
+                <span class="hint wide">Searching…</span>
+            }
+            else if (State.FoundSources is { } found)
+            {
+                @foreach (var source in found.Sources)
+                {
+                    var located = source;
+                    <div class="wide found-row">
+                        <span class="found-what">
+                            <strong>@located.Edition.Name</strong>
+                            <span class="badge store">@located.StoreLabel</span>
+                        </span>
+                        <span class="found-where" title="@located.AssetPath">
+                            @located.DisplayPath/@located.AssetFileName</span>
+                        <button disabled="@(!State.Workspace.IsOpen)"
+                                title="@(State.Workspace.IsOpen ? "import this copy" : "open a workspace first")"
+                                @onclick="() => State.ImportFoundSourceAsync(located)">Import</button>
+                    </div>
+                }
+                @if (found.Sources.Count == 0)
+                {
+                    <span class="hint wide">
+                        Nothing found in @found.DirectoriesVisited folder(s).
+                        @(found.Exhausted
+                            ? "The search hit its limit — choose a folder closer to the game."
+                            : "Try a folder further up, or pick the file yourself below.")</span>
+                }
+                else if (found.Exhausted)
+                {
+                    <span class="hint wide">The search hit its limit, so there may be more —
+                        choose a folder closer to the game to be sure.</span>
+                }
+            }
+        }
+        <div class="wide">
+            <label class="file-button @(State.Workspace.IsOpen ? "" : "disabled")"
+                   title="@(State.Workspace.IsOpen ? $"import {State.Game.ImportHint}" : "open a workspace first")">
+                <span class="btn-label">@(State.Game.Locator is null ? "Import game data" : "Pick the file yourself…")</span>
+                <InputFile OnChange="OnGameDataSelected" accept="@State.Game.ImportAccept"
+                           disabled="@(!State.Workspace.IsOpen)" />
+            </label>
+        </div>
+        @if (State.Archive is { } archive)
+        {
+            <span class="hint wide">Loaded <code>@archive.SourceName</code> —
+                @State.WallKeys.Count walls, @State.SpriteKeys.Count sprites.</span>
+        }
+        <span class="wide"><strong class="ref-heading">Installing a pack</strong></span>
+        @{
+            var guide = State.Game.InstallGuide;
+            var packFolder = State.Workspace.IsOpen
+                ? $"{State.Workspace.Name}/{StudioState.PackFolderName}"
+                : $"<workspace>/{StudioState.PackFolderName}";
+        }
+        <span class="hint wide">Generate the pack with the <strong>Pack</strong> button in the
+            title bar. It is written to <code>@packFolder</code> — keep it anywhere on disk you
+            like. Then reference it with the
+            <a href="@guide.PortUrl" target="_blank" rel="noopener">@guide.PortName</a> launcher;
+            <a href="@guide.PackInstructionsUrl" target="_blank" rel="noopener">instructions here</a>.</span>
+        @if (guide.ExtraStep is { } extraStep)
+        {
+            <span class="hint wide">You will also need to @extraStep@if (guide.ExtraStepUrl is { } extraUrl)
+                {<text> (</text><a href="@extraUrl" target="_blank" rel="noopener">how</a><text>)</text>}<text>.</text></span>
+        }
+            </div>
+        }
+        else if (_drawer == Drawer.Model)
         {
             <div class="drawer-body">
         <label>Gemini API key <input type="password" @bind="State.ApiKey" placeholder="saved to workspace" /></label>
@@ -287,7 +423,7 @@
             }
             else
             {
-                <span class="hint wide">no native light/dark pairs available — load a VSWAP first</span>
+                <span class="hint wide">no native light/dark pairs available — import game data first</span>
             }
             <span class="wide"><strong class="ref-heading">Lighten dark variants</strong></span>
             <span class="hint wide">Alternate Dark originals are brightened with this transform
@@ -324,7 +460,7 @@
             }
             else
             {
-                <span class="hint wide">no Alternate Dark pairs available — load a VSWAP first</span>
+                <span class="hint wide">no Alternate Dark pairs available — import game data first</span>
             }
             </div>
         }
@@ -351,16 +487,9 @@
                     <span class="size-controls" @onclick:stopPropagation>
                         @if (SelectedWallCount() >= 2)
                         {
-                            <button title="pair the selected walls as light/dark variants"
-                                    @onclick="State.AutoPairWalls">Auto-pair</button>
+                            <button title="@($"apply {State.Game.Name}'s {State.Game.AutoPairDescription} to unclassified tiles")"
+                                    @onclick="State.AutoPairTiles">Auto-pair</button>
                         }
-                        <label class="file-button import-btn @(State.Workspace.IsOpen ? "" : "disabled")"
-                               title="@(State.Workspace.IsOpen ? "import the game's graphics: choose VSWAP.BS6 (Aliens of Gold) or VSWAP.VSI (Planet Strike)" : "open a workspace first")">
-                            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M17.5 4C17.7761 4 18 4.22386 18 4.5V15.5C18 15.7761 17.7761 16 17.5 16C17.2239 16 17 15.7761 17 15.5V4.5C17 4.22386 17.2239 4 17.5 4ZM2 10C2 9.72386 2.22386 9.5 2.5 9.5H13.2929L10.1464 6.35355C9.95118 6.15829 9.95118 5.84171 10.1464 5.64645C10.3417 5.45118 10.6583 5.45118 10.8536 5.64645L14.8536 9.64645C14.9015 9.69439 14.9377 9.74964 14.9621 9.80861C14.9861 9.86669 14.9996 9.9303 15 9.997L15 10L15 10.003C14.9992 10.13 14.9504 10.2567 14.8536 10.3536L10.8536 14.3536C10.6583 14.5488 10.3417 14.5488 10.1464 14.3536C9.95118 14.1583 9.95118 13.8417 10.1464 13.6464L13.2929 10.5H2.5C2.22386 10.5 2 10.2761 2 10Z" fill="currentColor"/></svg>
-                            <span class="btn-label">Import</span>
-                            <InputFile OnChange="OnVswapSelected" accept=".BS6,.VSI,.bs6,.vsi"
-                                       disabled="@(!State.Workspace.IsOpen)" />
-                        </label>
                         <div class="seg zoom-seg">
                             <button class="seg-btn" title="smaller previews" @onclick="() => BumpSize(0, -1)"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 10C3 9.72386 3.22386 9.5 3.5 9.5H16.5C16.7761 9.5 17 9.72386 17 10C17 10.2761 16.7761 10.5 16.5 10.5H3.5C3.22386 10.5 3 10.2761 3 10Z" fill="currentColor"/></svg></button>
                             <button class="seg-btn" title="larger previews" @onclick="() => BumpSize(0, 1)"><IconAdd Size="14" /></button>
@@ -371,7 +500,29 @@
                                 @onclick="TogglePropsColumn"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.75 3H14.25C15.7688 3 17 4.23122 17 5.75V9.59971C16.6832 9.43777 16.3486 9.30564 16 9.20703V5.75C16 4.7835 15.2165 4 14.25 4H5.75C4.7835 4 4 4.7835 4 5.75V14.25C4 15.2165 4.7835 16 5.75 16H9.20703C9.30564 16.3486 9.43777 16.6832 9.59971 17H5.75C4.23122 17 3 15.7688 3 14.25V5.75C3 4.23122 4.23122 3 5.75 3ZM9.5 10H11.3369C10.9338 10.2839 10.5705 10.6206 10.2572 11H9.5C9.22386 11 9 10.7761 9 10.5C9 10.2239 9.22386 10 9.5 10ZM6.75 8C7.16421 8 7.5 7.66421 7.5 7.25C7.5 6.83579 7.16421 6.5 6.75 6.5C6.33579 6.5 6 6.83579 6 7.25C6 7.66421 6.33579 8 6.75 8ZM7.5 10.25C7.5 10.6642 7.16421 11 6.75 11C6.33579 11 6 10.6642 6 10.25C6 9.83579 6.33579 9.5 6.75 9.5C7.16421 9.5 7.5 9.83579 7.5 10.25ZM7.5 13.25C7.5 13.6642 7.16421 14 6.75 14C6.33579 14 6 13.6642 6 13.25C6 12.8358 6.33579 12.5 6.75 12.5C7.16421 12.5 7.5 12.8358 7.5 13.25ZM9 7.5C9 7.22386 9.22386 7 9.5 7H13.5C13.7761 7 14 7.22386 14 7.5C14 7.77614 13.7761 8 13.5 8H9.5C9.22386 8 9 7.77614 9 7.5ZM12.0657 11.4421C12.369 12.5232 11.723 13.6421 10.6351 13.92L10.174 14.0378C10.159 14.1898 10.1514 14.3439 10.1514 14.5C10.1514 14.6876 10.1625 14.8726 10.184 15.0542L10.5336 15.1369C11.653 15.4016 12.319 16.5537 11.9897 17.6558L11.8633 18.0786C12.1205 18.2819 12.4002 18.4561 12.698 18.5965L13.023 18.2524C13.8128 17.4161 15.1436 17.4168 15.9325 18.2539L16.2698 18.6119C16.5623 18.477 16.8376 18.3096 17.0917 18.1143L16.9356 17.5576C16.6323 16.4765 17.2783 15.3576 18.3662 15.0797L18.8268 14.962C18.8417 14.8101 18.8494 14.656 18.8494 14.5C18.8494 14.3122 18.8383 14.1271 18.8167 13.9454L18.4677 13.8628C17.3483 13.5982 16.6823 12.446 17.0116 11.3439L17.1378 10.9216C16.8806 10.7183 16.6008 10.544 16.303 10.4035L15.9783 10.7473C15.1885 11.5836 13.8577 11.5829 13.0688 10.7458L12.7314 10.3878C12.439 10.5227 12.1636 10.69 11.9095 10.8853L12.0657 11.4421ZM14.5004 15.5C13.9481 15.5 13.5004 15.0523 13.5004 14.5C13.5004 13.9477 13.9481 13.5 14.5004 13.5C15.0527 13.5 15.5004 13.9477 15.5004 14.5C15.5004 15.0523 15.0527 15.5 14.5004 15.5Z" fill="currentColor"/></svg><span class="btn-label">Properties</span></button>
                     </span>
                 </h5>
-                <TileGridPane />
+                @if (State.Archive is not null)
+                {
+                    <TileGridPane />
+                }
+                else
+                {
+                    <div class="pane empty-pane">
+                        @if (State.Workspace.IsOpen)
+                        {
+                            <p>No game data imported yet.</p>
+                            <p class="hint">This workspace targets <strong>@State.Game.Name</strong>.
+                                Import @State.Game.ImportHint to fill this list.</p>
+                            <button @onclick="() => OpenDrawer(Drawer.Game)">Game settings…</button>
+                        }
+                        else
+                        {
+                            <p>No workspace open.</p>
+                            <p class="hint">Open a workspace folder from the status bar — everything
+                                you do is stored there. Then choose its game and import the game's
+                                data.</p>
+                        }
+                    </div>
+                }
             </div>
         </div>
         <div class="v-splitter" @onpointerdown="e => BeginSplitterDrag(SplitterKind.Sidebar, e)"></div>
@@ -481,10 +632,24 @@
     }
 </div>
 
-<JobToasts />
+@* The popup lists the same jobs, and the toasts dock in the same corner one layer above it —
+   so while it is open they would sit on top of the list they duplicate. *@
+@if (!_jobsOpen)
+{
+    <JobToasts />
+}
 
 @code {
-    private enum Drawer { None, Model, Style, Generation, Application }
+    private enum Drawer { None, Game, Model, Style, Generation, Application }
+
+    /// <summary>Open a drawer directly (the topbar game chip), rather than toggling it.</summary>
+    private void OpenDrawer(Drawer drawer)
+    {
+        if (_drawer != drawer)
+        {
+            ToggleDrawer(drawer);
+        }
+    }
 
     private bool _styleRefEdit;
     private bool _settingsOpen;
@@ -730,7 +895,7 @@
     /// to 5 AlternateDark pairs (lighten transform live on the dark) — RAW originals only.</summary>
     private async Task RefreshPairPreviewsAsync()
     {
-        if (State.Vswap is null)
+        if (State.Archive is null)
         {
             _darkPairs = [];
             _lightenPairs = [];
@@ -748,7 +913,7 @@
         {
             try
             {
-                var lightKey = meta.LightSourceKey ?? StudioState.DefaultLightSource(key);
+                var lightKey = meta.LightSourceKey ?? State.DefaultLightSource(key);
                 if (lightKey is null)
                 {
                     continue;
@@ -791,6 +956,13 @@
             await RestoreLayoutAsync();
             _hasStoredWorkspace = await State.Workspace.HasStoredHandleAsync();
             await State.ReconnectWorkspaceAsync(interactive: false);
+            // Re-grant the search folder silently, but only scan when there is nothing to
+            // work on yet — a scan is thousands of directory listings, not worth doing on a
+            // session that already has its game data.
+            if (await State.ContentSearch.RestoreAsync(interactive: false) && State.Archive is null)
+            {
+                await State.SearchForGameDataAsync();
+            }
             StateHasChanged();
         }
     }
@@ -930,7 +1102,7 @@
         }
     }
 
-    private async Task OnVswapSelected(InputFileChangeEventArgs e)
+    private async Task OnGameDataSelected(InputFileChangeEventArgs e)
     {
         if (!State.Workspace.IsOpen)
         {
@@ -942,11 +1114,11 @@
             using var stream = e.File.OpenReadStream(maxAllowedSize: 64 * 1024 * 1024);
             using var buffer = new MemoryStream();
             await stream.CopyToAsync(buffer);
-            State.LoadVswap(buffer.ToArray(), e.File.Name);
+            State.LoadGameData(buffer.ToArray(), e.File.Name);
         }
         catch (Exception ex)
         {
-            State.Fail($"VSWAP load failed: {ex.Message}");
+            State.Fail($"{State.Game.Name} game data load failed: {ex.Message}");
         }
     }
 
