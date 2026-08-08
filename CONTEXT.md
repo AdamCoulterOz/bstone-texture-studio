@@ -70,7 +70,6 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.Core/Generation/GeminiImageClient.cs` | Gemini image API (`thinkingLevel`, `topP`, defensive response parsing). |
 | `src/TextureStudio.Core/Generation/OpenAiImageClient.cs` | OpenAI GPT Image API (`/v1/images/edits` with reference inputs, quality parameter). |
 | `src/TextureStudio.Core/Model/ProjectModel.cs` | `Project` and everything persisted in `project.json`. |
-| `src/TextureStudio.Core/Model/TileIdMigration.cs` | Rewrites tile ids from an older release everywhere a project keys tiles by them — metadata, light-source links, items, groups, runs, revisions, versions, job manifests, placements. |
 | `src/TextureStudio.App/Services/StudioState.cs` | ~3k lines: the single app state object. Game/edition resolution, prompt building, job lifecycle, slicing orchestration, URL caches, workspace I/O, persistence. |
 | `src/TextureStudio.App/Pages/GroupPane.razor` | The main area: tabs, group grid (platter), results views, placement tuning. The busiest UI file. |
 | `src/TextureStudio.App/Pages/Home.razor` | Shell: topbar, settings drawers, sidebar/props columns, statusbar. |
@@ -79,7 +78,7 @@ different engine system, out of scope for external textures).
 | `src/TextureStudio.App/wwwroot/js/interop.js` | All pixel work that must not run in C# (`composeSheet`, `composePngGrid`, `pngPreviewDataUrl`, `annotatePng`, `imageSize`, `copyText`, `autoSizePrompt`), plus two File System Access blocks: the read-write workspace (`ws*`) and the read-only content search root (`content*`). |
 | `src/TextureStudio.Pack/` | CLI: workspace → mod dir, from the game's `PlanPack`. `pack <workspace> [out-dir] [--edition <id>]`. |
 | `src/TextureStudio.Rekey/` | CLI: re-slice archived generations against `project.json` manifests. Game-agnostic — it only touches workspace files. |
-| `tests/TextureStudio.Core.Tests/` | 37 tests. The real-data archive test skips when game data is absent (`BSTONE_VSWAP` env override); the locator tests run against an in-memory `IDirectoryTree`. |
+| `tests/TextureStudio.Core.Tests/` | 35 tests. The real-data archive test skips when game data is absent (`BSTONE_VSWAP` env override); the locator tests run against an in-memory `IDirectoryTree`. |
 
 ### Workspace layout (user data, not in this repo)
 
@@ -160,8 +159,8 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   differentiator only), Role, LightSourceKey, and prompt alias.
 - **Tile ids** are opaque short strings minted by the game — `w22`, `s53`. Only
   the plugin knows what the characters mean; everything else treats them as keys
-  and asks `IGame` for anything it needs. `TileIdMigration` rewrites ids
-  persisted by an older release on every load, idempotently.
+  and asks `IGame` for anything it needs. Ids are the game's to mint and to change; there is no
+  compatibility layer, so a change to the scheme is a migration to plan.
 - **Tile kinds** (`TileKind.Full` / `TileKind.Cutout`) are the only tile
   distinction the pipelines make: fills-its-cell-and-opaque versus
   object-with-transparency. Walls and sprites are a *Blake Stone* concept and
@@ -356,21 +355,6 @@ until `built`. GitHub's CDN can serve the old `index.html` for a few minutes.
   without granting anything. A dev-only escape hatch (in-memory import, or a
   `?demo` flag opening a bundled read-only workspace) would close the remaining
   gap; that's a product change and needs the owner's call.
-- **`TileIdMigration` is scheduled for deletion.** Only two workspaces exist —
-  the author's and its tooling copy — so once both are on `w`/`s` ids the
-  migration, `IGame.MigrateTileId`, the migration test and the three call sites
-  are dead weight and should go. Preconditions, in order:
-  1. **Open each workspace in the app.** The migration rewrites in memory and
-     reaches disk through the usual chain (status → `Notify` → debounced save),
-     so opening is enough — but only the *app* does this. `TextureStudio.Pack`
-     and `Rekey` migrate in memory and never write `project.json`, so packing a
-     workspace does not convert it.
-  2. **Confirm on disk**, not by assumption: `project.json` should show `"w0"`,
-     not `"wall:0"`.
-  3. **Deal with the `project.json.bak-*` files** (four in the tooling copy).
-     They still hold legacy ids, and once the migration is gone, restoring one
-     produces a project whose ids match no art — the curation looks lost. Either
-     convert them, delete them, or accept the restore path is one-way.
 - **No deploy CI** — revisit once the .NET SDK for this app is on a stable
   channel rather than a preview band. Until then every deploy is the manual
   recipe above, so the published build silently lags `main` between releases.

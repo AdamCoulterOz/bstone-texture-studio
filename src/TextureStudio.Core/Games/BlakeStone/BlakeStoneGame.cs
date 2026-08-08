@@ -60,8 +60,6 @@ public sealed class BlakeStoneGame : IGame
 
     public string WorkspaceFileName(string tileId) => BlakeStoneTiles.WorkspaceFileName(tileId);
 
-    public string MigrateTileId(string tileId) => BlakeStoneTiles.Migrate(tileId);
-
     /// <summary>Wall chunks alternate light (even) / dark (odd), so an odd wall's art is
     /// derived from its even sibling unless the user points it somewhere else. Sprites carry
     /// no such convention.</summary>

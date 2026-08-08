@@ -47,7 +47,7 @@ the tiles are decoded is game-agnostic. One workspace targets one game
 | Concern | Interface member | Blake Stone |
 | --- | --- | --- |
 | Asset container | `OpenArchive` → `IGameArchive` | `VswapArchive` over `VswapFile` + `TileDecoders` + `BlakeStonePalette` |
-| Tile identity | `IGameArchive.Tiles` (`GameTile`), `KindOf`, `MigrateTileId` | `w22` walls (Full), `s53` sprites (Cutout) |
+| Tile identity | `IGameArchive.Tiles` (`GameTile`), `KindOf` | `w22` walls (Full), `s53` sprites (Cutout) |
 | Workspace file names | `WorkspaceFileName` | `w12` → `wall_00012.png` |
 | Which release | `Editions`, `DetectEdition` | extension: `.BS6` full, `.BS1` shareware, `.VSI` Planet Strike |
 | Import UI | `ImportAccept`, `ImportHint` | `.BS6,.BS1,.VSI` |

@@ -40,26 +40,4 @@ internal static class BlakeStoneTiles
 
     private static string Prefix(string tileId) => IsWall(tileId) ? "wall" : "sprite";
 
-    /// <summary>Pre-plugin ids were <c>wall:12</c> / <c>sprite:107</c>. Rewriting them is
-    /// idempotent — anything not in that exact shape is already current and passes through.</summary>
-    public static string Migrate(string tileId)
-    {
-        var separator = tileId.IndexOf(':');
-        if (separator < 0)
-        {
-            return tileId;
-        }
-        var kind = tileId[..separator];
-        var rest = tileId[(separator + 1)..];
-        if (!int.TryParse(rest, out var index))
-        {
-            return tileId;
-        }
-        return kind switch
-        {
-            "wall" => WallId(index),
-            "sprite" => SpriteId(index),
-            _ => tileId,
-        };
-    }
 }

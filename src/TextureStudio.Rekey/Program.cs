@@ -17,7 +17,6 @@ var ws = args[0];
 var targetPx = args.Length > 1 ? int.Parse(args[1]) : 512;
 var project = JsonSerializer.Deserialize<Project>(File.ReadAllBytes(Path.Combine(ws, "project.json")))!;
 var game = new GameCatalog().Get(project.GameId);
-TileIdMigration.Apply(project, game);
 
 static string Safe(string name) =>
     string.Join("-", name.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))

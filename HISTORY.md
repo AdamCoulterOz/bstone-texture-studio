@@ -269,3 +269,11 @@ in the git log; this records *why* the shape of the project changed.
   light-source links, items, group cells, seamless runs, revisions, the version
   index, archived job manifests and placements. Verified by packing the real
   workspace through the migration: 939 textures, byte-identical.
+- Then deleted the migration, and `IGame.MigrateTileId` with it. Only two
+  workspaces exist, so a compatibility layer for a scheme nobody else has ever
+  written was pure carrying cost. Both were converted first — the author's by
+  opening it, its tooling copy by refresh — and the three-day-old `.bak` files
+  were converted too, since a backup that restores into ids matching no art
+  reads as total data loss rather than as an old backup.
+- The interface is the point: a game mints its ids and owns their spelling, so
+  changing the scheme is a migration to plan, not a permanent seam.

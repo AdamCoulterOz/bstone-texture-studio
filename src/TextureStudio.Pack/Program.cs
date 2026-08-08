@@ -33,7 +33,6 @@ for (var i = 1; i < args.Length - 1; i++)
 }
 var project = JsonSerializer.Deserialize<Project>(File.ReadAllBytes(Path.Combine(ws, "project.json")))!;
 var game = new GameCatalog().Get(project.GameId);
-TileIdMigration.Apply(project, game);
 var edition = game.Editions.FirstOrDefault(e =>
                   e.Id == editionArg || e.AssetDirectory == editionArg)
               ?? GameCatalog.ResolveEdition(game, project.EditionId, archive: null);

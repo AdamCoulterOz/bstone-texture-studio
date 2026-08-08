@@ -2980,14 +2980,6 @@ public sealed class StudioState(
         if (projectJson is not null)
         {
             Project = JsonSerializer.Deserialize<Project>(projectJson, JsonOptions) ?? new Project();
-            // Before anything reads a tile id: the whole project is keyed by them, and the
-            // game owns their spelling. Idempotent, so it costs nothing on a current file.
-            var migrated = TileIdMigration.Apply(Project, Game);
-            if (migrated > 0)
-            {
-                SetStatus($"Migrated {migrated} tile ids to {Game.Name}'s current scheme.",
-                    "Workspace");
-            }
             ActiveGroup = Project.Groups.FirstOrDefault();
             RestoreJobHistory();
         }

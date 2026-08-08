@@ -57,11 +57,6 @@ public interface IGame
     /// <summary>Role Auto-pair assigns to an unclassified tile; null leaves it alone.</summary>
     PairRole? AutoPairRole(string tileId);
 
-    /// <summary>Rewrite a tile id persisted by an older release, or return it unchanged.
-    /// Runs on every load and must be idempotent — a workspace is years of curation keyed
-    /// by these strings, so a wrong answer silently detaches art from its metadata.</summary>
-    string MigrateTileId(string tileId);
-
     /// <summary>Category Auto-pair moves newly paired tiles into.</summary>
     string AutoPairCategory { get; }
 
