@@ -397,6 +397,12 @@ It was not the detection code — that was wired correctly all along.
     on the bar's centre and the trailing controls are pinned right by an auto
     margin — auto margins absorb free space before flex-grow, which is what let one
     rule serve both the offer-present and offer-absent cases.
+  - **The divider stopped short at both ends.** The control strips are painted over
+    the page for the full height of the title bar area — which is exactly the bar's
+    height — so `border-bottom`, being the last pixel *inside* that height, was
+    covered wherever a strip sat. The divider is now a `box-shadow` one pixel below
+    the box, past where the strips reach, with the border kept transparent rather
+    than removed so the box geometry does not shift.
 - Two self-inflicted bugs worth recording, both caught only by checking:
   - A stray line left outside a `/* */` while editing a comment silently discarded
     the **entire** `.topbar` rule — CSS error recovery skips to the end of the next

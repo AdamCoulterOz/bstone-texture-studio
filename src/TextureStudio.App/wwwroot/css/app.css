@@ -164,7 +164,13 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system,
    min-height: matching the OS title bar is what makes the window read as native, and a bar
    that wrapped to two rows would drag from somewhere the OS is not. */
 :root.wco .topbar { flex-wrap: nowrap; -webkit-app-region: drag;
-    padding-top: 0; padding-bottom: 0; }
+    padding-top: 0; padding-bottom: 0;
+    /* The control strips are painted over the page for the full height of the title bar area,
+       which is exactly this bar's height — so border-bottom, the last pixel inside that
+       height, is hidden under them at both ends and the divider appears to stop short. Draw it
+       one pixel lower instead, past where the strips reach. box-shadow does not affect layout,
+       and keeping the border transparent rather than removing it leaves the box unchanged. */
+    border-bottom-color: transparent; box-shadow: 0 1px 0 var(--edge); }
 /* Controls have to opt back out, or the drag region swallows the click. */
 :root.wco .topbar button, :root.wco .topbar .seg { -webkit-app-region: no-drag; }
 /* The workspace's game, in the status bar beside the workspace it belongs to — click to open
